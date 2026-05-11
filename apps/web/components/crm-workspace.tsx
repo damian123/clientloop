@@ -15,7 +15,8 @@ import {
   Search,
   Upload,
   UserPlus,
-  UserRound
+  UserRound,
+  X
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -52,6 +53,9 @@ type CustomFieldDraft = {
 };
 type CustomFieldRecord = Account | Contact | Lead | Opportunity;
 type CustomFieldValueDrafts = Record<string, Record<string, string>>;
+type SelectedRecordRef =
+  | { entityType: "account"; id: string }
+  | { entityType: "opportunity"; id: string };
 
 const stageLabels: Record<OpportunityStage, string> = {
   qualification: "Qualification",
@@ -92,6 +96,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [customFieldValueDrafts, setCustomFieldValueDrafts] = useState<CustomFieldValueDrafts>({});
   const [savingCustomFieldRecordId, setSavingCustomFieldRecordId] = useState<string | null>(null);
   const [customFieldMessage, setCustomFieldMessage] = useState("");
+  const [selectedRecord, setSelectedRecord] = useState<SelectedRecordRef | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
   const [leadMessage, setLeadMessage] = useState("");
@@ -122,6 +127,20 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
     return grouped;
   }, [customFieldDefinitions]);
+
+  const selectedRecordDetail = useMemo(() => {
+    if (!selectedRecord) {
+      return null;
+    }
+
+    if (selectedRecord.entityType === "account") {
+      const account = accountsById.get(selectedRecord.id);
+      return account ? { entityType: "account" as const, record: account } : null;
+    }
+
+    const opportunity = opportunities.find((candidate) => candidate.id === selectedRecord.id);
+    return opportunity ? { entityType: "opportunity" as const, record: opportunity } : null;
+  }, [accountsById, opportunities, selectedRecord]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOpportunities = useMemo(
@@ -692,15 +711,13 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               <PipelineView
                 accountsById={accountsById}
                 customFieldDefinitions={customFieldsByEntity.get("opportunity") ?? []}
-                customFieldMessage={customFieldMessage}
-                customFieldValueDrafts={customFieldValueDrafts}
                 filteredOpportunities={filteredOpportunities}
-                savingCustomFieldRecordId={savingCustomFieldRecordId}
                 stageFilter={stageFilter}
                 syncingId={syncingId}
                 onAdvance={advanceOpportunity}
-                onCustomFieldDraftChange={updateCustomFieldDraftValue}
-                onSaveCustomFields={saveRecordCustomFields}
+                onOpenRecord={(opportunity) =>
+                  setSelectedRecord({ entityType: "opportunity", id: opportunity.id })
+                }
                 onStageFilter={setStageFilter}
               />
             ) : null}
@@ -718,12 +735,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               <AccountsView
                 accounts={filteredAccounts}
                 customFieldDefinitions={customFieldsByEntity.get("account") ?? []}
-                customFieldMessage={customFieldMessage}
-                customFieldValueDrafts={customFieldValueDrafts}
                 opportunities={opportunities}
-                savingCustomFieldRecordId={savingCustomFieldRecordId}
-                onCustomFieldDraftChange={updateCustomFieldDraftValue}
-                onSaveCustomFields={saveRecordCustomFields}
+                onOpenRecord={(account) =>
+                  setSelectedRecord({ entityType: "account", id: account.id })
+                }
               />
             ) : null}
 
@@ -750,6 +765,23 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
           </section>
 
           <aside className="side-panel" aria-label="Work queue">
+            {selectedRecordDetail ? (
+              <RecordDetailPanel
+                accountsById={accountsById}
+                customFieldDefinitions={
+                  customFieldsByEntity.get(selectedRecordDetail.entityType) ?? []
+                }
+                customFieldMessage={customFieldMessage}
+                customFieldValueDrafts={customFieldValueDrafts}
+                entityType={selectedRecordDetail.entityType}
+                opportunities={opportunities}
+                record={selectedRecordDetail.record}
+                savingCustomFieldRecordId={savingCustomFieldRecordId}
+                onClose={() => setSelectedRecord(null)}
+                onCustomFieldDraftChange={updateCustomFieldDraftValue}
+                onSaveCustomFields={saveRecordCustomFields}
+              />
+            ) : null}
             <TaskQueue
               tasks={tasks}
               accountsById={accountsById}
@@ -836,24 +868,11 @@ function LeadsView({
 function PipelineView(props: {
   accountsById: Map<string, Account>;
   customFieldDefinitions: CustomFieldDefinition[];
-  customFieldMessage: string;
-  customFieldValueDrafts: CustomFieldValueDrafts;
   filteredOpportunities: Opportunity[];
-  savingCustomFieldRecordId: string | null;
   stageFilter: OpportunityStage | "all";
   syncingId: string | null;
   onAdvance: (opportunity: Opportunity) => void;
-  onCustomFieldDraftChange: (
-    entityType: RecordEntityType,
-    recordId: string,
-    fieldKey: string,
-    value: string
-  ) => void;
-  onSaveCustomFields: (
-    entityType: RecordEntityType,
-    record: CustomFieldRecord,
-    definitions: CustomFieldDefinition[]
-  ) => void;
+  onOpenRecord: (opportunity: Opportunity) => void;
   onStageFilter: (stage: OpportunityStage | "all") => void;
 }) {
   return (
@@ -913,26 +932,25 @@ function PipelineView(props: {
                       definitions={props.customFieldDefinitions}
                       values={opportunity.customFields}
                     />
-                    <CustomFieldValueEditor
-                      definitions={props.customFieldDefinitions}
-                      drafts={props.customFieldValueDrafts}
-                      entityType="opportunity"
-                      record={opportunity}
-                      savingRecordId={props.savingCustomFieldRecordId}
-                      onDraftChange={props.onCustomFieldDraftChange}
-                      onSave={props.onSaveCustomFields}
-                    />
                     <div className="card-row">
                       <span>{formatDate(opportunity.expectedCloseDate)}</span>
-                      <button
-                        className="icon-button compact"
-                        title="Advance stage"
-                        aria-label={`Advance ${opportunity.name}`}
-                        disabled={props.syncingId === opportunity.id}
-                        onClick={() => props.onAdvance(opportunity)}
-                      >
-                        <ArrowRight size={16} />
-                      </button>
+                      <div className="card-actions">
+                        <button
+                          className="table-action"
+                          onClick={() => props.onOpenRecord(opportunity)}
+                        >
+                          Open
+                        </button>
+                        <button
+                          className="icon-button compact"
+                          title="Advance stage"
+                          aria-label={`Advance ${opportunity.name}`}
+                          disabled={props.syncingId === opportunity.id}
+                          onClick={() => props.onAdvance(opportunity)}
+                        >
+                          <ArrowRight size={16} />
+                        </button>
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -944,7 +962,6 @@ function PipelineView(props: {
           );
         })}
       </div>
-      {props.customFieldMessage ? <p className="data-message">{props.customFieldMessage}</p> : null}
     </>
   );
 }
@@ -952,30 +969,13 @@ function PipelineView(props: {
 function AccountsView({
   accounts,
   customFieldDefinitions,
-  customFieldMessage,
-  customFieldValueDrafts,
   opportunities,
-  savingCustomFieldRecordId,
-  onCustomFieldDraftChange,
-  onSaveCustomFields
+  onOpenRecord
 }: {
   accounts: Account[];
   customFieldDefinitions: CustomFieldDefinition[];
-  customFieldMessage: string;
-  customFieldValueDrafts: CustomFieldValueDrafts;
   opportunities: Opportunity[];
-  savingCustomFieldRecordId: string | null;
-  onCustomFieldDraftChange: (
-    entityType: RecordEntityType,
-    recordId: string,
-    fieldKey: string,
-    value: string
-  ) => void;
-  onSaveCustomFields: (
-    entityType: RecordEntityType,
-    record: CustomFieldRecord,
-    definitions: CustomFieldDefinition[]
-  ) => void;
+  onOpenRecord: (account: Account) => void;
 }) {
   return (
     <>
@@ -996,7 +996,7 @@ function AccountsView({
               {customFieldDefinitions.map((definition) => (
                 <th scope="col" key={definition.id}>{definition.label}</th>
               ))}
-              <th scope="col">Fields</th>
+              <th scope="col">Detail</th>
             </tr>
           </thead>
           <tbody>
@@ -1004,11 +1004,13 @@ function AccountsView({
               const pipeline = opportunities
                 .filter((opportunity) => opportunity.accountId === account.id)
                 .reduce((sum, opportunity) => sum + (opportunity.amount ?? 0), 0);
-              const draftKey = recordDraftKey("account", account.id);
-              const hasDraft = hasCustomFieldDraft(customFieldValueDrafts, draftKey);
               return (
                 <tr key={account.id}>
-                  <td>{account.name}</td>
+                  <td>
+                    <button className="link-button" onClick={() => onOpenRecord(account)}>
+                      {account.name}
+                    </button>
+                  </td>
                   <td>
                     <StatusPill value={account.status} />
                   </td>
@@ -1016,27 +1018,12 @@ function AccountsView({
                   <td>{formatCurrency(pipeline)}</td>
                   {customFieldDefinitions.map((definition) => (
                     <td key={definition.id}>
-                      <CustomFieldInput
-                        definition={definition}
-                        value={draftCustomFieldValue(
-                          customFieldValueDrafts,
-                          account,
-                          definition,
-                          "account"
-                        )}
-                        onChange={(value) =>
-                          onCustomFieldDraftChange("account", account.id, definition.key, value)
-                        }
-                      />
+                      {formatCustomFieldValue(account.customFields[definition.key])}
                     </td>
                   ))}
                   <td>
-                    <button
-                      className="table-action"
-                      disabled={!hasDraft || savingCustomFieldRecordId === draftKey}
-                      onClick={() => onSaveCustomFields("account", account, customFieldDefinitions)}
-                    >
-                      <Check size={16} /> Save
+                    <button className="table-action" onClick={() => onOpenRecord(account)}>
+                      Open
                     </button>
                   </td>
                 </tr>
@@ -1045,7 +1032,6 @@ function AccountsView({
           </tbody>
         </table>
       </div>
-      {customFieldMessage ? <p className="data-message">{customFieldMessage}</p> : null}
     </>
   );
 }
@@ -1329,6 +1315,134 @@ function DataView({
         {dataMessage ? <p className="data-message">{dataMessage}</p> : null}
       </div>
     </>
+  );
+}
+
+function RecordDetailPanel({
+  accountsById,
+  customFieldDefinitions,
+  customFieldMessage,
+  customFieldValueDrafts,
+  entityType,
+  opportunities,
+  record,
+  savingCustomFieldRecordId,
+  onClose,
+  onCustomFieldDraftChange,
+  onSaveCustomFields
+}: {
+  accountsById: Map<string, Account>;
+  customFieldDefinitions: CustomFieldDefinition[];
+  customFieldMessage: string;
+  customFieldValueDrafts: CustomFieldValueDrafts;
+  entityType: "account" | "opportunity";
+  opportunities: Opportunity[];
+  record: Account | Opportunity;
+  savingCustomFieldRecordId: string | null;
+  onClose: () => void;
+  onCustomFieldDraftChange: (
+    entityType: RecordEntityType,
+    recordId: string,
+    fieldKey: string,
+    value: string
+  ) => void;
+  onSaveCustomFields: (
+    entityType: RecordEntityType,
+    record: CustomFieldRecord,
+    definitions: CustomFieldDefinition[]
+  ) => void;
+}) {
+  const relatedOpportunities =
+    entityType === "account"
+      ? opportunities.filter((opportunity) => opportunity.accountId === record.id)
+      : [];
+  const opportunityAccount =
+    entityType === "opportunity" ? accountsById.get((record as Opportunity).accountId) : undefined;
+  const pipelineTotal = relatedOpportunities.reduce(
+    (sum, opportunity) => sum + (opportunity.amount ?? 0),
+    0
+  );
+
+  return (
+    <section className="queue-panel detail-panel" aria-label="Record detail">
+      <div className="detail-header">
+        <div>
+          <p className="eyebrow">{entityType}</p>
+          <h3>{recordLabel(record)}</h3>
+        </div>
+        <button className="icon-button compact" title="Close detail" aria-label="Close detail" onClick={onClose}>
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="detail-grid">
+        {entityType === "account" ? (
+          <>
+            <DetailMetric label="Status" value={(record as Account).status} />
+            <DetailMetric label="Domain" value={(record as Account).domain ?? ""} />
+            <DetailMetric label="Open pipeline" value={formatCurrency(pipelineTotal)} />
+            <DetailMetric label="Opportunities" value={String(relatedOpportunities.length)} />
+          </>
+        ) : (
+          <>
+            <DetailMetric label="Stage" value={(record as Opportunity).stage} />
+            <DetailMetric label="Account" value={opportunityAccount?.name ?? ""} />
+            <DetailMetric label="Amount" value={formatCurrency((record as Opportunity).amount ?? 0)} />
+            <DetailMetric label="Close" value={formatDate((record as Opportunity).expectedCloseDate)} />
+          </>
+        )}
+      </div>
+
+      <section className="detail-section" aria-label="Custom field values">
+        <div>
+          <p className="eyebrow">Custom fields</p>
+          <h4>Record values</h4>
+        </div>
+        <CustomFieldValueEditor
+          definitions={customFieldDefinitions}
+          drafts={customFieldValueDrafts}
+          entityType={entityType}
+          record={record}
+          savingRecordId={savingCustomFieldRecordId}
+          onDraftChange={onCustomFieldDraftChange}
+          onSave={onSaveCustomFields}
+        />
+        {customFieldDefinitions.length === 0 ? (
+          <p className="detail-empty">No fields defined for this record type</p>
+        ) : null}
+        {customFieldMessage ? <p className="data-message">{customFieldMessage}</p> : null}
+      </section>
+
+      {entityType === "account" ? (
+        <section className="detail-section" aria-label="Related opportunities">
+          <div>
+            <p className="eyebrow">Pipeline</p>
+            <h4>Related opportunities</h4>
+          </div>
+          <div className="detail-list">
+            {relatedOpportunities.map((opportunity) => (
+              <div className="detail-list-row" key={opportunity.id}>
+                <strong>{opportunity.name}</strong>
+                <span>{stageLabels[opportunity.stage]}</span>
+                <span>{formatCurrency(opportunity.amount ?? 0)}</span>
+              </div>
+            ))}
+            {relatedOpportunities.length === 0 ? (
+              <p className="detail-empty">No opportunities</p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+    </section>
+  );
+}
+
+function DetailMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="detail-metric">
+      <span>{label}</span>
+      <strong>{value || "-"}</strong>
+    </div>
   );
 }
 

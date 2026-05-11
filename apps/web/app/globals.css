@@ -435,6 +435,21 @@ button:disabled {
   font-weight: 700;
 }
 
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.link-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 700;
+  text-align: left;
+}
+
 .field-badges {
   display: flex;
   flex-wrap: wrap;
@@ -707,6 +722,89 @@ tr:last-child td {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.detail-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.detail-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 10px;
+  align-items: start;
+}
+
+.detail-header h3,
+.detail-section h4 {
+  margin: 0;
+}
+
+.detail-header h3 {
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detail-metric {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px;
+  background: var(--panel-muted);
+}
+
+.detail-metric span,
+.detail-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-metric strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+
+.detail-section {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-list {
+  display: grid;
+  gap: 8px;
+}
+
+.detail-list-row {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px;
+  background: var(--panel-muted);
+}
+
+.detail-list-row strong {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.detail-list-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-empty {
+  margin: 0;
 }
 
 .status-pill {
