@@ -2,6 +2,7 @@ import {
   apiSchemas,
   createAccountSchema,
   createContactSchema,
+  createCustomFieldDefinitionSchema,
   createLeadSchema,
   createOpportunitySchema,
   createTaskSchema,
@@ -18,6 +19,7 @@ import {
   type ConvertLeadInput,
   type CreateAccountInput,
   type CreateContactInput,
+  type CreateCustomFieldDefinitionInput,
   type CreateLeadInput,
   type CreateOpportunityInput,
   type CreateTaskInput,
@@ -34,6 +36,7 @@ import {
 import type {
   Account,
   Contact,
+  CustomFieldDefinition,
   Lead,
   Opportunity,
   Page,
@@ -208,6 +211,24 @@ export class CRMClient {
 
   async appendNote(input: AppendNoteInput) {
     return this.request("/v1/notes", this.jsonRequest("POST", input), apiSchemas.note);
+  }
+
+  async listCustomFieldDefinitions(): Promise<CustomFieldDefinition[]> {
+    return this.request(
+      "/v1/custom-fields",
+      { method: "GET" },
+      apiSchemas.customFieldDefinitions
+    );
+  }
+
+  async createCustomFieldDefinition(
+    input: CreateCustomFieldDefinitionInput
+  ): Promise<CustomFieldDefinition> {
+    return this.request(
+      "/v1/custom-fields",
+      this.jsonRequest("POST", createCustomFieldDefinitionSchema.parse(input)),
+      apiSchemas.customFieldDefinition
+    );
   }
 
   async listWebhookSubscriptions(): Promise<WebhookSubscription[]> {

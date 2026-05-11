@@ -97,7 +97,53 @@ describe("CRMClient session support", () => {
     expect(headers.get("x-csrf-token")).toBe("csrf-token");
     expect(headers.get("idempotency-key")).toBe("convert-key");
   });
+
+  it("creates custom field definitions with CSRF headers", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      return jsonResponse(customFieldDefinitionResponse());
+    };
+    const client = new CRMClient({
+      baseUrl: "http://api.test",
+      csrfToken: "csrf-token",
+      fetchImpl
+    });
+
+    const definition = await client.createCustomFieldDefinition({
+      entityType: "account",
+      label: "Renewal tier",
+      fieldType: "single_select",
+      required: false,
+      isIndexed: true,
+      schema: { options: ["gold", "silver"] }
+    });
+
+    expect(definition.key).toBe("renewal_tier");
+    expect(calls[0]!.url).toBe("http://api.test/v1/custom-fields");
+    const headers = new Headers(calls[0]!.init.headers);
+    expect(headers.get("x-csrf-token")).toBe("csrf-token");
+  });
 });
+
+function customFieldDefinitionResponse() {
+  return {
+    id: "00000000-0000-4000-8000-000000009201",
+    tenantId: seedTenantId,
+    entityType: "account",
+    key: "renewal_tier",
+    label: "Renewal tier",
+    fieldType: "single_select",
+    required: false,
+    isIndexed: true,
+    schema: { options: ["gold", "silver"] },
+    createdAt: "2026-05-11T00:00:00.000Z",
+    updatedAt: "2026-05-11T00:00:00.000Z",
+    createdBy: seedManagerId,
+    updatedBy: seedManagerId,
+    version: 1
+  };
+}
 
 function leadConversionResponse() {
   const now = "2026-05-11T00:00:00.000Z";

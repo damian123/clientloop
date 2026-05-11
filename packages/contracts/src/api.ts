@@ -5,6 +5,7 @@ import {
   contactSchema,
   customFieldDefinitionSchema,
   customFieldsSchema,
+  customFieldTypeSchema,
   entityTypeSchema,
   idSchema,
   leadSchema,
@@ -12,6 +13,7 @@ import {
   opportunitySchema,
   opportunityStageSchema,
   pageSchema,
+  recordEntityTypeSchema,
   taskSchema,
   webhookEventTypeSchema,
   webhookSubscriptionSchema
@@ -121,6 +123,16 @@ export const appendNoteSchema = z.object({
   bodyFormat: z.enum(["markdown", "html", "plain_text"]).default("plain_text")
 });
 
+export const createCustomFieldDefinitionSchema = z.object({
+  entityType: recordEntityTypeSchema,
+  key: z.string().min(1).optional(),
+  label: z.string().min(1),
+  fieldType: customFieldTypeSchema,
+  required: z.boolean().default(false),
+  isIndexed: z.boolean().default(false),
+  schema: z.record(z.unknown()).default({})
+});
+
 export const createWebhookSubscriptionSchema = z.object({
   url: z.string().url(),
   eventTypes: z.array(webhookEventTypeSchema).min(1),
@@ -226,6 +238,7 @@ export const apiSchemas = {
   note: noteSchema,
   activity: activitySchema,
   customFieldDefinition: customFieldDefinitionSchema,
+  customFieldDefinitions: z.array(customFieldDefinitionSchema),
   accountPage: pageSchema(accountSchema),
   contactPage: pageSchema(contactSchema),
   leadPage: pageSchema(leadSchema),
@@ -255,6 +268,7 @@ export type UpdateOpportunityInput = z.infer<typeof updateOpportunitySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
+export type CreateCustomFieldDefinitionInput = z.infer<typeof createCustomFieldDefinitionSchema>;
 export type CreateWebhookSubscriptionInput = z.infer<typeof createWebhookSubscriptionSchema>;
 export type CreateWebhookSubscriptionResponse = z.infer<typeof createWebhookSubscriptionResponseSchema>;
 export type DevLoginInput = z.infer<typeof devLoginSchema>;

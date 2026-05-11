@@ -156,6 +156,57 @@ describe("CRM API", () => {
     await app.close();
   });
 
+  it("creates custom field definitions and rejects duplicate keys", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/custom-fields",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        entityType: "account",
+        label: "Renewal tier",
+        fieldType: "single_select",
+        isIndexed: true,
+        schema: { options: ["gold", "silver"] }
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().key).toBe("renewal_tier");
+    expect(response.json().label).toBe("Renewal tier");
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/v1/custom-fields",
+      headers: {
+        "x-user-id": seedManagerId
+      }
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(
+      listResponse.json().some((definition: { key: string }) => definition.key === "renewal_tier")
+    ).toBe(true);
+
+    const duplicateResponse = await app.inject({
+      method: "POST",
+      url: "/v1/custom-fields",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        entityType: "account",
+        key: "renewal_tier",
+        label: "Renewal tier duplicate",
+        fieldType: "text"
+      }
+    });
+    expect(duplicateResponse.statusCode).toBe(409);
+    await app.close();
+  });
+
   it("exports contacts as CSV for managers", async () => {
     const app = await buildServer({ repository: new InMemoryCRMRepository() });
 

@@ -1,12 +1,14 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   assertCan,
+  assertValidCustomFieldDefinition,
   changeOpportunityStage,
   completeTask as completeTaskRule,
   convertLead as convertLeadRule,
   createAuditFields,
   createDomainEvent,
   createSeedData,
+  normalizeCustomFieldKey,
   targetFromRecord,
   type AccessPrincipal,
   type Account,
@@ -29,6 +31,7 @@ import type {
   ConvertLeadInput,
   CreateAccountInput,
   CreateContactInput,
+  CreateCustomFieldDefinitionInput,
   CreateLeadInput,
   CreateOpportunityInput,
   CreateTaskInput,
@@ -100,7 +103,8 @@ export class InMemoryCRMRepository implements CRMRepository {
     return this.page(this.filterByText(this.byTenant(this.store.accounts, tenantId), query.q, [
       "name",
       "domain",
-      "status"
+      "status",
+      "customFields"
     ]), query.limit);
   }
 
@@ -126,7 +130,8 @@ export class InMemoryCRMRepository implements CRMRepository {
     return this.page(this.filterByText(this.byTenant(this.store.contacts, tenantId), query.q, [
       "firstName",
       "lastName",
-      "email"
+      "email",
+      "customFields"
     ]), query.limit);
   }
 
@@ -158,7 +163,8 @@ export class InMemoryCRMRepository implements CRMRepository {
       "companyName",
       "contactName",
       "email",
-      "status"
+      "status",
+      "customFields"
     ]), query.limit);
   }
 
@@ -276,7 +282,8 @@ export class InMemoryCRMRepository implements CRMRepository {
     return this.page(this.filterByText(this.byTenant(this.store.opportunities, tenantId), query.q, [
       "name",
       "stage",
-      "currency"
+      "currency",
+      "customFields"
     ]), query.limit);
   }
 
@@ -475,31 +482,74 @@ export class InMemoryCRMRepository implements CRMRepository {
     return this.byTenant(this.store.customFieldDefinitions, tenantId);
   }
 
+  async createCustomFieldDefinition(
+    principal: AccessPrincipal,
+    input: CreateCustomFieldDefinitionInput
+  ): Promise<CustomFieldDefinition> {
+    assertCan(principal, "custom_field", "create", { tenantId: principal.tenantId });
+    const key = normalizeCustomFieldKey(input.key ?? input.label);
+    const alreadyExists = this.store.customFieldDefinitions.some(
+      (definition) =>
+        definition.tenantId === principal.tenantId &&
+        definition.entityType === input.entityType &&
+        definition.key === key
+    );
+
+    if (alreadyExists) {
+      throw new Error("Custom field key already exists");
+    }
+
+    const now = new Date().toISOString();
+    const definition: CustomFieldDefinition = {
+      id: randomUUID(),
+      entityType: input.entityType,
+      key,
+      label: input.label.trim(),
+      fieldType: input.fieldType,
+      required: input.required,
+      isIndexed: input.isIndexed,
+      schema: input.schema,
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+    assertValidCustomFieldDefinition(definition);
+
+    this.store.customFieldDefinitions.push(definition);
+    return definition;
+  }
+
   async search(tenantId: TenantId, query: SearchQuery): Promise<SearchResult[]> {
     const haystack: SearchResult[] = [
       ...this.byTenant(this.store.accounts, tenantId).map((account) => ({
         type: "account" as const,
         id: account.id,
         label: account.name,
-        description: account.domain ?? account.status
+        description: [account.domain ?? account.status, stringifySearchValue(account.customFields)]
+          .filter(Boolean)
+          .join(" ")
       })),
       ...this.byTenant(this.store.contacts, tenantId).map((contact) => ({
         type: "contact" as const,
         id: contact.id,
         label: `${contact.firstName} ${contact.lastName}`,
-        description: contact.email ?? undefined
+        description: [contact.email, stringifySearchValue(contact.customFields)]
+          .filter(Boolean)
+          .join(" ")
       })),
       ...this.byTenant(this.store.leads, tenantId).map((lead) => ({
         type: "lead" as const,
         id: lead.id,
         label: lead.contactName,
-        description: lead.companyName ?? lead.email ?? undefined
+        description: [lead.companyName, lead.email, stringifySearchValue(lead.customFields)]
+          .filter(Boolean)
+          .join(" ")
       })),
       ...this.byTenant(this.store.opportunities, tenantId).map((opportunity) => ({
         type: "opportunity" as const,
         id: opportunity.id,
         label: opportunity.name,
-        description: opportunity.stage
+        description: [opportunity.stage, stringifySearchValue(opportunity.customFields)]
+          .filter(Boolean)
+          .join(" ")
       }))
     ];
 
@@ -620,7 +670,7 @@ export class InMemoryCRMRepository implements CRMRepository {
 
     const normalized = query.toLowerCase();
     return items.filter((item) =>
-      keys.some((key) => String(item[key] ?? "").toLowerCase().includes(normalized))
+      keys.some((key) => stringifySearchValue(item[key]).toLowerCase().includes(normalized))
     );
   }
 
@@ -779,4 +829,18 @@ function splitLeadName(contactName: string): { firstName: string; lastName: stri
   const firstName = parts.shift() ?? "Unknown";
   const lastName = parts.length > 0 ? parts.join(" ") : "Unknown";
   return { firstName, lastName };
+}
+
+function stringifySearchValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value)
+      .map((item) => stringifySearchValue(item))
+      .join(" ");
+  }
+
+  return String(value);
 }

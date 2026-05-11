@@ -10,3 +10,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0006-session-auth-csrf.md](./0006-session-auth-csrf.md)
 - [0007-frontend-session-wiring.md](./0007-frontend-session-wiring.md)
 - [0008-lead-conversion-workflow.md](./0008-lead-conversion-workflow.md)
+- [0009-custom-field-management.md](./0009-custom-field-management.md)

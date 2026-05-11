@@ -2,10 +2,12 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import {
   assertCan,
+  assertValidCustomFieldDefinition,
   changeOpportunityStage,
   completeTask as completeTaskRule,
   convertLead as convertLeadRule,
   createAuditFields,
+  normalizeCustomFieldKey,
   targetFromRecord,
   type AccessPrincipal,
   type Account,
@@ -36,6 +38,7 @@ import type {
   ConvertLeadInput,
   CreateAccountInput,
   CreateContactInput,
+  CreateCustomFieldDefinitionInput,
   CreateLeadInput,
   CreateOpportunityInput,
   CreateTaskInput,
@@ -917,6 +920,67 @@ export class PrismaCRMRepository implements CRMRepository {
     });
 
     return definitions.map((definition) => this.toCustomFieldDefinition(definition));
+  }
+
+  async createCustomFieldDefinition(
+    principal: AccessPrincipal,
+    input: CreateCustomFieldDefinitionInput
+  ): Promise<CustomFieldDefinition> {
+    assertCan(principal, "custom_field", "create", { tenantId: principal.tenantId });
+    const key = normalizeCustomFieldKey(input.key ?? input.label);
+    const now = new Date();
+    const audit = createAuditFields({
+      tenantId: principal.tenantId,
+      actorUserId: principal.user.id,
+      now: now.toISOString()
+    });
+    const candidate: CustomFieldDefinition = {
+      id: randomUUID(),
+      entityType: input.entityType,
+      key,
+      label: input.label.trim(),
+      fieldType: input.fieldType,
+      required: input.required,
+      isIndexed: input.isIndexed,
+      schema: input.schema,
+      ...audit
+    };
+    assertValidCustomFieldDefinition(candidate);
+
+    const existing = await this.prisma.customFieldDefinition.findUnique({
+      where: {
+        tenantId_entityType_key: {
+          tenantId: principal.tenantId,
+          entityType: input.entityType,
+          key
+        }
+      }
+    });
+
+    if (existing) {
+      throw new Error("Custom field key already exists");
+    }
+
+    const definition = await this.prisma.customFieldDefinition.create({
+      data: {
+        id: candidate.id,
+        tenantId: candidate.tenantId,
+        entityType: candidate.entityType,
+        key: candidate.key,
+        label: candidate.label,
+        fieldType: candidate.fieldType,
+        required: candidate.required,
+        isIndexed: candidate.isIndexed,
+        schema: this.asJson(candidate.schema ?? {}),
+        createdAt: now,
+        updatedAt: now,
+        createdBy: candidate.createdBy,
+        updatedBy: candidate.updatedBy,
+        version: candidate.version
+      }
+    });
+
+    return this.toCustomFieldDefinition(definition);
   }
 
   async search(tenantId: TenantId, query: SearchQuery): Promise<SearchResult[]> {

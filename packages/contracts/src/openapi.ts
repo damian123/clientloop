@@ -110,6 +110,16 @@ export const openApiDocument = {
     "/v1/notes": {
       post: { summary: "Append note" }
     },
+    "/v1/custom-fields": {
+      get: { summary: "List custom field definitions" },
+      post: {
+        summary: "Create custom field definition",
+        responses: {
+          "201": { description: "Created" },
+          "409": { description: "Custom field key already exists" }
+        }
+      }
+    },
     "/v1/webhooks/subscriptions": {
       get: { summary: "List outbound webhook subscriptions" },
       post: {

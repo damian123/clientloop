@@ -20,6 +20,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ContactImportPreview,
+  CreateCustomFieldDefinitionInput,
   DashboardResponse,
   ExportEntity,
   SessionResponse
@@ -27,15 +28,28 @@ import type {
 import type {
   Account,
   Contact,
+  CustomFieldDefinition,
+  CustomFieldPrimitive,
+  CustomFieldType,
   Lead,
   Opportunity,
   OpportunityStage,
+  RecordEntityType,
   Task
 } from "@clientloop/domain";
 import { opportunityStageOrder, seedManagerId, seedTenantId } from "@clientloop/domain";
 import { CRMClient, CRMClientError } from "@clientloop/ui-sdk";
 
 type ViewMode = "pipeline" | "leads" | "accounts" | "contacts" | "data";
+type CustomFieldDraft = {
+  entityType: RecordEntityType;
+  label: string;
+  key: string;
+  fieldType: CustomFieldType;
+  required: boolean;
+  isIndexed: boolean;
+  options: string;
+};
 
 const stageLabels: Record<OpportunityStage, string> = {
   qualification: "Qualification",
@@ -61,6 +75,18 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   );
   const [contacts, setContacts] = useState<Contact[]>(initialDashboard.contacts);
   const [tasks, setTasks] = useState<Task[]>(initialDashboard.tasks);
+  const [customFieldDefinitions, setCustomFieldDefinitions] = useState<CustomFieldDefinition[]>(
+    initialDashboard.customFieldDefinitions
+  );
+  const [customFieldDraft, setCustomFieldDraft] = useState<CustomFieldDraft>({
+    entityType: "account",
+    label: "",
+    key: "",
+    fieldType: "text",
+    required: false,
+    isIndexed: false,
+    options: ""
+  });
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
   const [leadMessage, setLeadMessage] = useState("");
@@ -82,46 +108,68 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     [contacts]
   );
 
+  const customFieldsByEntity = useMemo(() => {
+    const grouped = new Map<RecordEntityType, CustomFieldDefinition[]>();
+    for (const definition of customFieldDefinitions) {
+      const definitions = grouped.get(definition.entityType) ?? [];
+      definitions.push(definition);
+      grouped.set(definition.entityType, definitions);
+    }
+    return grouped;
+  }, [customFieldDefinitions]);
+
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOpportunities = useMemo(
     () =>
       opportunities.filter((opportunity) => {
         const account = accountsById.get(opportunity.accountId);
         const matchesStage = stageFilter === "all" || opportunity.stage === stageFilter;
-        const searchable = `${opportunity.name} ${opportunity.stage} ${account?.name ?? ""}`;
+        const searchable = `${opportunity.name} ${opportunity.stage} ${account?.name ?? ""} ${searchableCustomFields(
+          opportunity.customFields,
+          customFieldsByEntity.get("opportunity") ?? []
+        )}`;
         return matchesStage && searchable.toLowerCase().includes(normalizedQuery);
       }),
-    [accountsById, normalizedQuery, opportunities, stageFilter]
+    [accountsById, customFieldsByEntity, normalizedQuery, opportunities, stageFilter]
   );
 
   const filteredAccounts = useMemo(
     () =>
       accounts.filter((account) =>
-        `${account.name} ${account.domain ?? ""} ${account.status}`
+        `${account.name} ${account.domain ?? ""} ${account.status} ${searchableCustomFields(
+          account.customFields,
+          customFieldsByEntity.get("account") ?? []
+        )}`
           .toLowerCase()
           .includes(normalizedQuery)
       ),
-    [accounts, normalizedQuery]
+    [accounts, customFieldsByEntity, normalizedQuery]
   );
 
   const filteredLeads = useMemo(
     () =>
       leads.filter((lead) =>
-        `${lead.contactName} ${lead.companyName ?? ""} ${lead.email ?? ""} ${lead.status}`
+        `${lead.contactName} ${lead.companyName ?? ""} ${lead.email ?? ""} ${lead.status} ${searchableCustomFields(
+          lead.customFields,
+          customFieldsByEntity.get("lead") ?? []
+        )}`
           .toLowerCase()
           .includes(normalizedQuery)
       ),
-    [leads, normalizedQuery]
+    [customFieldsByEntity, leads, normalizedQuery]
   );
 
   const filteredContacts = useMemo(
     () =>
       contacts.filter((contact) =>
-        `${contact.firstName} ${contact.lastName} ${contact.email ?? ""}`
+        `${contact.firstName} ${contact.lastName} ${contact.email ?? ""} ${searchableCustomFields(
+          contact.customFields,
+          customFieldsByEntity.get("contact") ?? []
+        )}`
           .toLowerCase()
           .includes(normalizedQuery)
       ),
-    [contacts, normalizedQuery]
+    [contacts, customFieldsByEntity, normalizedQuery]
   );
 
   const pipelineValue = opportunities.reduce(
@@ -418,6 +466,44 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }
 
+  async function createCustomFieldDefinition() {
+    if (!apiBaseUrl) {
+      setDataMessage("API is not configured");
+      return;
+    }
+
+    const input = customFieldDefinitionInput(customFieldDraft);
+    if (!input) {
+      setDataMessage("Custom field label is required");
+      return;
+    }
+
+    setDataBusy(true);
+    setDataMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const definition = await client.createCustomFieldDefinition(input);
+      setCustomFieldDefinitions((current) => [...current, definition]);
+      setCustomFieldDraft({
+        entityType: customFieldDraft.entityType,
+        label: "",
+        key: "",
+        fieldType: "text",
+        required: false,
+        isIndexed: false,
+        options: ""
+      });
+      setDataMessage(`Created ${definition.label}`);
+    } catch (error) {
+      setDataMessage(errorSummary(error));
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Workspace navigation">
@@ -512,6 +598,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             {viewMode === "pipeline" ? (
               <PipelineView
                 accountsById={accountsById}
+                customFieldDefinitions={customFieldsByEntity.get("opportunity") ?? []}
                 filteredOpportunities={filteredOpportunities}
                 stageFilter={stageFilter}
                 syncingId={syncingId}
@@ -530,7 +617,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             ) : null}
 
             {viewMode === "accounts" ? (
-              <AccountsView accounts={filteredAccounts} opportunities={opportunities} />
+              <AccountsView
+                accounts={filteredAccounts}
+                customFieldDefinitions={customFieldsByEntity.get("account") ?? []}
+                opportunities={opportunities}
+              />
             ) : null}
 
             {viewMode === "contacts" ? (
@@ -540,10 +631,14 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             {viewMode === "data" ? (
               <DataView
                 contactCsv={contactCsv}
+                customFieldDefinitions={customFieldDefinitions}
+                customFieldDraft={customFieldDraft}
                 dataBusy={dataBusy}
                 dataMessage={dataMessage}
                 importPreview={importPreview}
                 onContactCsvChange={setContactCsv}
+                onCreateCustomField={createCustomFieldDefinition}
+                onCustomFieldDraftChange={setCustomFieldDraft}
                 onExport={exportRecords}
                 onImport={importContactCsv}
                 onPreview={previewContactCsv}
@@ -637,6 +732,7 @@ function LeadsView({
 
 function PipelineView(props: {
   accountsById: Map<string, Account>;
+  customFieldDefinitions: CustomFieldDefinition[];
   filteredOpportunities: Opportunity[];
   stageFilter: OpportunityStage | "all";
   syncingId: string | null;
@@ -696,6 +792,10 @@ function PipelineView(props: {
                       <span>{formatCurrency(opportunity.amount ?? 0)}</span>
                       <span>{opportunity.probabilityPct ?? 0}%</span>
                     </div>
+                    <CustomFieldBadges
+                      definitions={props.customFieldDefinitions}
+                      values={opportunity.customFields}
+                    />
                     <div className="card-row">
                       <span>{formatDate(opportunity.expectedCloseDate)}</span>
                       <button
@@ -724,9 +824,11 @@ function PipelineView(props: {
 
 function AccountsView({
   accounts,
+  customFieldDefinitions,
   opportunities
 }: {
   accounts: Account[];
+  customFieldDefinitions: CustomFieldDefinition[];
   opportunities: Opportunity[];
 }) {
   return (
@@ -745,7 +847,9 @@ function AccountsView({
               <th scope="col">Status</th>
               <th scope="col">Domain</th>
               <th scope="col">Open pipeline</th>
-              <th scope="col">Health</th>
+              {customFieldDefinitions.map((definition) => (
+                <th scope="col" key={definition.id}>{definition.label}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -761,7 +865,11 @@ function AccountsView({
                   </td>
                   <td>{account.domain ?? ""}</td>
                   <td>{formatCurrency(pipeline)}</td>
-                  <td>{String(account.customFields.health_score ?? "")}</td>
+                  {customFieldDefinitions.map((definition) => (
+                    <td key={definition.id}>
+                      {formatCustomFieldValue(account.customFields[definition.key])}
+                    </td>
+                  ))}
                 </tr>
               );
             })}
@@ -815,19 +923,27 @@ function ContactsView({
 
 function DataView({
   contactCsv,
+  customFieldDefinitions,
+  customFieldDraft,
   dataBusy,
   dataMessage,
   importPreview,
   onContactCsvChange,
+  onCreateCustomField,
+  onCustomFieldDraftChange,
   onExport,
   onImport,
   onPreview
 }: {
   contactCsv: string;
+  customFieldDefinitions: CustomFieldDefinition[];
+  customFieldDraft: CustomFieldDraft;
   dataBusy: boolean;
   dataMessage: string;
   importPreview: ContactImportPreview | null;
   onContactCsvChange: (value: string) => void;
+  onCreateCustomField: () => void;
+  onCustomFieldDraftChange: (value: CustomFieldDraft) => void;
   onExport: (entity: ExportEntity) => void;
   onImport: () => void;
   onPreview: () => void;
@@ -907,6 +1023,137 @@ function DataView({
               ))}
             </ul>
           ) : null}
+        </section>
+
+        <section className="data-section" aria-label="Custom field definitions">
+          <div>
+            <p className="eyebrow">Custom fields</p>
+            <h4>Definitions</h4>
+          </div>
+
+          <div className="field-form">
+            <label>
+              <span>Entity</span>
+              <select
+                value={customFieldDraft.entityType}
+                onChange={(event) =>
+                  onCustomFieldDraftChange({
+                    ...customFieldDraft,
+                    entityType: event.target.value as RecordEntityType
+                  })
+                }
+              >
+                <option value="account">Account</option>
+                <option value="contact">Contact</option>
+                <option value="lead">Lead</option>
+                <option value="opportunity">Opportunity</option>
+              </select>
+            </label>
+            <label>
+              <span>Label</span>
+              <input
+                value={customFieldDraft.label}
+                onChange={(event) =>
+                  onCustomFieldDraftChange({
+                    ...customFieldDraft,
+                    label: event.target.value,
+                    key: customFieldDraft.key || normalizeKey(event.target.value)
+                  })
+                }
+                placeholder="Renewal tier"
+              />
+            </label>
+            <label>
+              <span>Key</span>
+              <input
+                value={customFieldDraft.key}
+                onChange={(event) =>
+                  onCustomFieldDraftChange({
+                    ...customFieldDraft,
+                    key: normalizeKey(event.target.value)
+                  })
+                }
+                placeholder="renewal_tier"
+              />
+            </label>
+            <label>
+              <span>Type</span>
+              <select
+                value={customFieldDraft.fieldType}
+                onChange={(event) =>
+                  onCustomFieldDraftChange({
+                    ...customFieldDraft,
+                    fieldType: event.target.value as CustomFieldType
+                  })
+                }
+              >
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="boolean">Boolean</option>
+                <option value="date">Date</option>
+                <option value="single_select">Single select</option>
+                <option value="multi_select">Multi select</option>
+              </select>
+            </label>
+            <label className="field-options">
+              <span>Options</span>
+              <input
+                value={customFieldDraft.options}
+                onChange={(event) =>
+                  onCustomFieldDraftChange({
+                    ...customFieldDraft,
+                    options: event.target.value
+                  })
+                }
+                placeholder="gold, silver, bronze"
+                disabled={!isSelectField(customFieldDraft.fieldType)}
+              />
+            </label>
+            <label className="check-field">
+              <input
+                checked={customFieldDraft.required}
+                onChange={(event) =>
+                  onCustomFieldDraftChange({
+                    ...customFieldDraft,
+                    required: event.target.checked
+                  })
+                }
+                type="checkbox"
+              />
+              <span>Required</span>
+            </label>
+            <label className="check-field">
+              <input
+                checked={customFieldDraft.isIndexed}
+                onChange={(event) =>
+                  onCustomFieldDraftChange({
+                    ...customFieldDraft,
+                    isIndexed: event.target.checked
+                  })
+                }
+                type="checkbox"
+              />
+              <span>Indexed</span>
+            </label>
+            <button
+              className="primary-action"
+              disabled={dataBusy || customFieldDraft.label.trim().length === 0}
+              onClick={onCreateCustomField}
+            >
+              <Plus size={16} /> Add field
+            </button>
+          </div>
+
+          <div className="definition-list">
+            {customFieldDefinitions.map((definition) => (
+              <div className="definition-row" key={definition.id}>
+                <strong>{definition.label}</strong>
+                <span>{definition.entityType}</span>
+                <code>{definition.key}</code>
+                <StatusPill value={definition.fieldType} />
+              </div>
+            ))}
+          </div>
         </section>
 
         {dataMessage ? <p className="data-message">{dataMessage}</p> : null}
@@ -1043,10 +1290,39 @@ function StatusPill({ value }: { value: string }) {
   return <span className={`status-pill ${value}`}>{value.replace("_", " ")}</span>;
 }
 
+function CustomFieldBadges({
+  definitions,
+  values
+}: {
+  definitions: CustomFieldDefinition[];
+  values: Record<string, CustomFieldPrimitive>;
+}) {
+  const visibleValues = definitions
+    .map((definition) => ({
+      definition,
+      value: values[definition.key]
+    }))
+    .filter((item) => item.value !== undefined && item.value !== null && item.value !== "");
+
+  if (visibleValues.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="field-badges">
+      {visibleValues.slice(0, 2).map(({ definition, value }) => (
+        <span key={definition.id}>{definition.label}: {formatCustomFieldValue(value)}</span>
+      ))}
+    </div>
+  );
+}
+
 function viewModeTitle(viewMode: ViewMode) {
   switch (viewMode) {
     case "pipeline":
       return "Pipeline";
+    case "leads":
+      return "Leads";
     case "accounts":
       return "Accounts";
     case "contacts":
@@ -1054,6 +1330,73 @@ function viewModeTitle(viewMode: ViewMode) {
     case "data":
       return "Data";
   }
+}
+
+function customFieldDefinitionInput(
+  draft: CustomFieldDraft
+): CreateCustomFieldDefinitionInput | null {
+  const label = draft.label.trim();
+  if (!label) {
+    return null;
+  }
+
+  return {
+    entityType: draft.entityType,
+    key: draft.key.trim() || undefined,
+    label,
+    fieldType: draft.fieldType,
+    required: draft.required,
+    isIndexed: draft.isIndexed,
+    schema: isSelectField(draft.fieldType)
+      ? {
+          options: draft.options
+            .split(",")
+            .map((option) => option.trim())
+            .filter(Boolean)
+        }
+      : {}
+  };
+}
+
+function isSelectField(fieldType: CustomFieldType) {
+  return fieldType === "single_select" || fieldType === "multi_select";
+}
+
+function normalizeKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function searchableCustomFields(
+  values: Record<string, CustomFieldPrimitive>,
+  definitions: CustomFieldDefinition[]
+) {
+  return definitions
+    .map((definition) => `${definition.label} ${formatCustomFieldValue(values[definition.key])}`)
+    .join(" ");
+}
+
+function formatCustomFieldValue(value: CustomFieldPrimitive | undefined): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+
+  if (typeof value === "object") {
+    if ("amount" in value && "currency" in value) {
+      return `${value.currency} ${value.amount}`;
+    }
+
+    return value.label;
+  }
+
+  return String(value);
 }
 
 function formatCurrency(value: number) {

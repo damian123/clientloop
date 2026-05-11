@@ -4,6 +4,7 @@ import {
   completeTaskSchema,
   createAccountSchema,
   createContactSchema,
+  createCustomFieldDefinitionSchema,
   createLeadSchema,
   createOpportunitySchema,
   createTaskSchema,
@@ -159,6 +160,15 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
   app.get("/v1/custom-fields", async (request) => {
     const principal = await principalFromRequest(request, repository);
     return repository.listCustomFieldDefinitions(principal.tenantId);
+  });
+
+  app.post("/v1/custom-fields", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const definition = await repository.createCustomFieldDefinition(
+      principal,
+      createCustomFieldDefinitionSchema.parse(request.body)
+    );
+    return reply.code(201).send(definition);
   });
 
   app.get("/v1/webhooks/subscriptions", async (request) => {

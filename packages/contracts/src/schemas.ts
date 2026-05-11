@@ -62,6 +62,20 @@ export const customFieldPrimitiveSchema = z.union([
 
 export const customFieldsSchema = z.record(customFieldPrimitiveSchema);
 
+export const customFieldTypeSchema = z.enum([
+  "text",
+  "textarea",
+  "number",
+  "boolean",
+  "date",
+  "datetime",
+  "single_select",
+  "multi_select",
+  "currency",
+  "user_ref",
+  "account_ref"
+]);
+
 export const pageInfoSchema = z.object({
   endCursor: z.string().optional(),
   hasNextPage: z.boolean()
@@ -171,19 +185,7 @@ export const customFieldDefinitionSchema = z.object({
   entityType: recordEntityTypeSchema,
   key: z.string(),
   label: z.string(),
-  fieldType: z.enum([
-    "text",
-    "textarea",
-    "number",
-    "boolean",
-    "date",
-    "datetime",
-    "single_select",
-    "multi_select",
-    "currency",
-    "user_ref",
-    "account_ref"
-  ]),
+  fieldType: customFieldTypeSchema,
   required: z.boolean(),
   isIndexed: z.boolean(),
   schema: z.record(z.unknown()).optional(),

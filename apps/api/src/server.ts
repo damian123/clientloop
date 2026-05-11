@@ -1,7 +1,7 @@
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { ZodError } from "zod";
-import { AuthorizationError, DomainRuleError } from "@clientloop/domain";
+import { AuthorizationError, CustomFieldValidationError, DomainRuleError } from "@clientloop/domain";
 import { registerCrmRoutes } from "./modules/crm-routes";
 import { registerSessionRoutes } from "./modules/session-routes";
 import { createRepositoryFromEnv } from "./repository-factory";
@@ -37,6 +37,12 @@ export async function buildServer(options: BuildServerOptions = {}) {
       });
     }
 
+    if (error instanceof CustomFieldValidationError) {
+      return reply.code(400).send({
+        error: error.message
+      });
+    }
+
     const normalizedError = error instanceof Error ? error : new Error("Unknown error");
 
     if (
@@ -50,6 +56,12 @@ export async function buildServer(options: BuildServerOptions = {}) {
 
     if (normalizedError.message.includes("not found")) {
       return reply.code(404).send({
+        error: normalizedError.message
+      });
+    }
+
+    if (normalizedError.message.includes("already exists")) {
+      return reply.code(409).send({
         error: normalizedError.message
       });
     }
