@@ -9,6 +9,7 @@ import {
   createAuditFields,
   normalizeCustomFieldKey,
   targetFromRecord,
+  validateCustomFieldPatch,
   type AccessPrincipal,
   type Account,
   type Activity,
@@ -44,11 +45,13 @@ import type {
   CreateTaskInput,
   CreateWebhookSubscriptionInput,
   CreateWebhookSubscriptionResponse,
+  CustomFieldValueUpdateResult,
   DashboardResponse,
   LeadConversionResult,
   ListQuery,
   SearchQuery,
   SearchResult,
+  UpdateCustomFieldValuesInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
@@ -983,6 +986,67 @@ export class PrismaCRMRepository implements CRMRepository {
     return this.toCustomFieldDefinition(definition);
   }
 
+  async updateCustomFieldValues(input: {
+    principal: AccessPrincipal;
+    entityType: RecordEntityType;
+    id: string;
+    body: UpdateCustomFieldValuesInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<CustomFieldValueUpdateResult> {
+    const route = `PATCH /v1/custom-field-values/${input.entityType}/${input.id}`;
+    const requestHash = this.hashRequest(input.body);
+
+    if (input.idempotencyKey) {
+      const existing = await this.prisma.idempotencyKey.findUnique({
+        where: {
+          tenantId_route_key: {
+            tenantId: input.principal.tenantId,
+            route,
+            key: input.idempotencyKey
+          }
+        }
+      });
+
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new Error("Idempotency key reused with a different request");
+        }
+        return existing.response as unknown as CustomFieldValueUpdateResult;
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const definitions = await tx.customFieldDefinition.findMany({
+        where: {
+          tenantId: input.principal.tenantId,
+          entityType: input.entityType
+        }
+      });
+      validateCustomFieldPatch(
+        definitions.map((definition) => this.toCustomFieldDefinition(definition)),
+        input.body.customFields
+      );
+
+      const now = new Date();
+      const response = await this.updateCustomFieldRecord(tx, input, now);
+
+      if (input.idempotencyKey) {
+        await tx.idempotencyKey.create({
+          data: {
+            tenantId: input.principal.tenantId,
+            route,
+            key: input.idempotencyKey,
+            requestHash,
+            response: this.asJson(response),
+            expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
+          }
+        });
+      }
+
+      return response;
+    });
+  }
+
   async search(tenantId: TenantId, query: SearchQuery): Promise<SearchResult[]> {
     const [accounts, contacts, leads, opportunities] = await Promise.all([
       this.prisma.account.findMany({
@@ -1149,6 +1213,142 @@ export class PrismaCRMRepository implements CRMRepository {
         lastError: error.slice(0, 1_000)
       }
     });
+  }
+
+  private async updateCustomFieldRecord(
+    tx: PrismaTransaction,
+    input: {
+      principal: AccessPrincipal;
+      entityType: RecordEntityType;
+      id: string;
+      body: UpdateCustomFieldValuesInput;
+    },
+    now: Date
+  ): Promise<CustomFieldValueUpdateResult> {
+    switch (input.entityType) {
+      case "account": {
+        const currentRecord = await tx.account.findFirst({
+          where: { id: input.id, tenantId: input.principal.tenantId, archivedAt: null }
+        });
+        if (!currentRecord) {
+          throw new Error("account not found");
+        }
+        const current = this.toAccount(currentRecord);
+        assertCan(input.principal, "account", "update", targetFromRecord(current));
+        const customFields = { ...current.customFields, ...input.body.customFields };
+        const version = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+        const result = await tx.account.updateMany({
+          where: {
+            id: input.id,
+            tenantId: input.principal.tenantId,
+            version: input.body.expectedVersion,
+            archivedAt: null
+          },
+          data: {
+            customFields: this.asJson(customFields),
+            updatedAt: now,
+            updatedBy: input.principal.user.id,
+            version
+          }
+        });
+        if (result.count !== 1) {
+          throw new Error("Version conflict");
+        }
+        return this.toAccount(await tx.account.findUniqueOrThrow({ where: { id: input.id } }));
+      }
+      case "contact": {
+        const currentRecord = await tx.contact.findFirst({
+          where: { id: input.id, tenantId: input.principal.tenantId, archivedAt: null }
+        });
+        if (!currentRecord) {
+          throw new Error("contact not found");
+        }
+        const current = this.toContact(currentRecord);
+        assertCan(input.principal, "contact", "update", targetFromRecord(current));
+        const customFields = { ...current.customFields, ...input.body.customFields };
+        const version = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+        const result = await tx.contact.updateMany({
+          where: {
+            id: input.id,
+            tenantId: input.principal.tenantId,
+            version: input.body.expectedVersion,
+            archivedAt: null
+          },
+          data: {
+            customFields: this.asJson(customFields),
+            updatedAt: now,
+            updatedBy: input.principal.user.id,
+            version
+          }
+        });
+        if (result.count !== 1) {
+          throw new Error("Version conflict");
+        }
+        return this.toContact(await tx.contact.findUniqueOrThrow({ where: { id: input.id } }));
+      }
+      case "lead": {
+        const currentRecord = await tx.lead.findFirst({
+          where: { id: input.id, tenantId: input.principal.tenantId, archivedAt: null }
+        });
+        if (!currentRecord) {
+          throw new Error("lead not found");
+        }
+        const current = this.toLead(currentRecord);
+        assertCan(input.principal, "lead", "update", targetFromRecord(current));
+        const customFields = { ...current.customFields, ...input.body.customFields };
+        const version = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+        const result = await tx.lead.updateMany({
+          where: {
+            id: input.id,
+            tenantId: input.principal.tenantId,
+            version: input.body.expectedVersion,
+            archivedAt: null
+          },
+          data: {
+            customFields: this.asJson(customFields),
+            updatedAt: now,
+            updatedBy: input.principal.user.id,
+            version
+          }
+        });
+        if (result.count !== 1) {
+          throw new Error("Version conflict");
+        }
+        return this.toLead(await tx.lead.findUniqueOrThrow({ where: { id: input.id } }));
+      }
+      case "opportunity": {
+        const currentRecord = await tx.opportunity.findFirst({
+          where: { id: input.id, tenantId: input.principal.tenantId, archivedAt: null }
+        });
+        if (!currentRecord) {
+          throw new Error("opportunity not found");
+        }
+        const current = this.toOpportunity(currentRecord);
+        assertCan(input.principal, "opportunity", "update", targetFromRecord(current));
+        const customFields = { ...current.customFields, ...input.body.customFields };
+        const version = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+        const result = await tx.opportunity.updateMany({
+          where: {
+            id: input.id,
+            tenantId: input.principal.tenantId,
+            version: input.body.expectedVersion,
+            archivedAt: null
+          },
+          data: {
+            customFields: this.asJson(customFields),
+            updatedAt: now,
+            updatedBy: input.principal.user.id,
+            version
+          }
+        });
+        if (result.count !== 1) {
+          throw new Error("Version conflict");
+        }
+        return this.toOpportunity(
+          await tx.opportunity.findUniqueOrThrow({ where: { id: input.id } })
+        );
+      }
+    }
   }
 
   private toUser(user: UserWithRoles): User {

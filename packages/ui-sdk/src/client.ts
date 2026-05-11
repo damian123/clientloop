@@ -11,6 +11,7 @@ import {
   convertLeadSchema,
   devLoginSchema,
   exportEntitySchema,
+  updateCustomFieldValuesSchema,
   type AppendNoteInput,
   type CompleteTaskInput,
   type ContactImportPreview,
@@ -25,12 +26,14 @@ import {
   type CreateTaskInput,
   type CreateWebhookSubscriptionInput,
   type CreateWebhookSubscriptionResponse,
+  type CustomFieldValueUpdateResult,
   type DashboardResponse,
   type DevLoginInput,
   type ExportEntity,
   type LeadConversionResult,
   type SearchResult,
   type SessionResponse,
+  type UpdateCustomFieldValuesInput,
   type UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type {
@@ -40,6 +43,7 @@ import type {
   Lead,
   Opportunity,
   Page,
+  RecordEntityType,
   Task,
   WebhookSubscription
 } from "@clientloop/domain";
@@ -228,6 +232,22 @@ export class CRMClient {
       "/v1/custom-fields",
       this.jsonRequest("POST", createCustomFieldDefinitionSchema.parse(input)),
       apiSchemas.customFieldDefinition
+    );
+  }
+
+  async updateCustomFieldValues(
+    entityType: RecordEntityType,
+    id: string,
+    input: UpdateCustomFieldValuesInput,
+    options: { idempotencyKey?: string } = {}
+  ): Promise<CustomFieldValueUpdateResult> {
+    return this.request(
+      `/v1/custom-field-values/${entityType}/${id}`,
+      this.jsonRequest("PATCH", updateCustomFieldValuesSchema.parse(input), {
+        "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID(),
+        "If-Match": String(input.expectedVersion)
+      }),
+      apiSchemas.customFieldValueUpdateResult
     );
   }
 

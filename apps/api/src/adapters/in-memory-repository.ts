@@ -10,11 +10,14 @@ import {
   createSeedData,
   normalizeCustomFieldKey,
   targetFromRecord,
+  validateCustomFieldPatch,
   type AccessPrincipal,
   type Account,
   type Activity,
   type Contact,
+  type CRMRecord,
   type CustomFieldDefinition,
+  type CustomFieldPrimitive,
   type Lead,
   type Note,
   type Opportunity,
@@ -37,11 +40,13 @@ import type {
   CreateTaskInput,
   CreateWebhookSubscriptionInput,
   CreateWebhookSubscriptionResponse,
+  CustomFieldValueUpdateResult,
   DashboardResponse,
   LeadConversionResult,
   ListQuery,
   SearchQuery,
   SearchResult,
+  UpdateCustomFieldValuesInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
@@ -59,12 +64,15 @@ interface Store {
   customFieldDefinitions: CustomFieldDefinition[];
 }
 
+type CustomFieldRecord = Account | Contact | Lead | Opportunity;
+
 export class InMemoryCRMRepository implements CRMRepository {
   private readonly store: Store;
   private readonly outbox: OutboxEvent[] = [];
   private readonly webhookSubscriptions: WebhookDeliveryTarget[] = [];
   private readonly idempotencyResults = new Map<string, Opportunity>();
   private readonly leadConversionResults = new Map<string, LeadConversionResult>();
+  private readonly customFieldValueResults = new Map<string, CustomFieldValueUpdateResult>();
 
   constructor(seed: Store = createSeedData()) {
     this.store = seed;
@@ -517,6 +525,58 @@ export class InMemoryCRMRepository implements CRMRepository {
     return definition;
   }
 
+  async updateCustomFieldValues(input: {
+    principal: AccessPrincipal;
+    entityType: "account" | "contact" | "lead" | "opportunity";
+    id: string;
+    body: UpdateCustomFieldValuesInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<CustomFieldValueUpdateResult> {
+    const idempotencyScope = input.idempotencyKey
+      ? `${input.principal.tenantId}:${input.entityType}:${input.id}:custom-fields:${input.idempotencyKey}`
+      : undefined;
+
+    if (idempotencyScope && this.customFieldValueResults.has(idempotencyScope)) {
+      return this.customFieldValueResults.get(idempotencyScope)!;
+    }
+
+    const collection = this.collectionForEntity(input.entityType);
+    const index = collection.findIndex(
+      (record) => record.tenantId === input.principal.tenantId && record.id === input.id
+    );
+
+    if (index < 0) {
+      throw new Error(`${input.entityType} not found`);
+    }
+
+    const current = collection[index]!;
+    assertCan(input.principal, input.entityType, "update", targetFromRecord(current));
+    this.validateCustomFieldPatch(
+      input.principal.tenantId,
+      input.entityType,
+      input.body.customFields
+    );
+    const now = new Date().toISOString();
+    const updated = {
+      ...current,
+      customFields: {
+        ...current.customFields,
+        ...input.body.customFields
+      },
+      updatedAt: now,
+      updatedBy: input.principal.user.id,
+      version: this.assertExpectedVersion(current, input.body.expectedVersion) + 1
+    };
+
+    collection[index] = updated;
+
+    if (idempotencyScope) {
+      this.customFieldValueResults.set(idempotencyScope, updated);
+    }
+
+    return updated;
+  }
+
   async search(tenantId: TenantId, query: SearchQuery): Promise<SearchResult[]> {
     const haystack: SearchResult[] = [
       ...this.byTenant(this.store.accounts, tenantId).map((account) => ({
@@ -671,6 +731,34 @@ export class InMemoryCRMRepository implements CRMRepository {
     const normalized = query.toLowerCase();
     return items.filter((item) =>
       keys.some((key) => stringifySearchValue(item[key]).toLowerCase().includes(normalized))
+    );
+  }
+
+  private collectionForEntity(
+    entityType: "account" | "contact" | "lead" | "opportunity"
+  ): CustomFieldRecord[] {
+    switch (entityType) {
+      case "account":
+        return this.store.accounts;
+      case "contact":
+        return this.store.contacts;
+      case "lead":
+        return this.store.leads;
+      case "opportunity":
+        return this.store.opportunities;
+    }
+  }
+
+  private validateCustomFieldPatch(
+    tenantId: TenantId,
+    entityType: "account" | "contact" | "lead" | "opportunity",
+    values: Record<string, CustomFieldPrimitive>
+  ): void {
+    validateCustomFieldPatch(
+      this.store.customFieldDefinitions.filter(
+        (definition) => definition.tenantId === tenantId && definition.entityType === entityType
+      ),
+      values
     );
   }
 

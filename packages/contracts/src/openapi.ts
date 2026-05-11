@@ -120,6 +120,41 @@ export const openApiDocument = {
         }
       }
     },
+    "/v1/custom-field-values/{entityType}/{id}": {
+      patch: {
+        summary: "Update custom field values for a CRM record",
+        parameters: [
+          {
+            name: "entityType",
+            in: "path",
+            schema: {
+              type: "string",
+              enum: ["account", "contact", "lead", "opportunity"]
+            }
+          },
+          {
+            name: "id",
+            in: "path",
+            schema: { type: "string" }
+          },
+          {
+            name: "If-Match",
+            in: "header",
+            schema: { type: "string" }
+          },
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Updated" },
+          "400": { description: "Invalid custom field value" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
     "/v1/webhooks/subscriptions": {
       get: { summary: "List outbound webhook subscriptions" },
       post: {

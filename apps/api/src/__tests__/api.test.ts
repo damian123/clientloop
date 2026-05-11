@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seedLeads, seedManagerId, seedOpportunities } from "@clientloop/domain";
+import { seedAccounts, seedLeads, seedManagerId, seedOpportunities } from "@clientloop/domain";
 import { InMemoryCRMRepository } from "../adapters/in-memory-repository";
 import { buildServer } from "../server";
 
@@ -204,6 +204,62 @@ describe("CRM API", () => {
       }
     });
     expect(duplicateResponse.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("updates record custom field values with validation and concurrency", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+    const account = seedAccounts[0]!;
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/v1/custom-field-values/account/${account.id}`,
+      headers: {
+        "x-user-id": seedManagerId,
+        "If-Match": String(account.version),
+        "Idempotency-Key": "custom-field-value-test"
+      },
+      payload: {
+        expectedVersion: account.version,
+        customFields: {
+          health_score: 88
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().customFields.health_score).toBe(88);
+    expect(response.json().version).toBe(account.version + 1);
+
+    const staleResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/custom-field-values/account/${account.id}`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        expectedVersion: account.version,
+        customFields: {
+          health_score: 72
+        }
+      }
+    });
+    expect(staleResponse.statusCode).toBe(409);
+
+    const invalidResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/custom-field-values/account/${seedAccounts[1]!.id}`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        expectedVersion: seedAccounts[1]!.version,
+        customFields: {
+          health_score: "not a number"
+        }
+      }
+    });
+    expect(invalidResponse.statusCode).toBe(400);
     await app.close();
   });
 

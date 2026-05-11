@@ -451,6 +451,33 @@ button:disabled {
   font-size: 12px;
 }
 
+.field-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.field-editor label {
+  display: grid;
+  gap: 4px;
+}
+
+.field-editor label > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field-input {
+  width: 100%;
+  min-width: 96px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  background: var(--panel);
+  color: var(--text);
+}
+
 .empty-state {
   display: grid;
   place-items: center;

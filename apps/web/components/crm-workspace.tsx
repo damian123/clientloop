@@ -50,6 +50,8 @@ type CustomFieldDraft = {
   isIndexed: boolean;
   options: string;
 };
+type CustomFieldRecord = Account | Contact | Lead | Opportunity;
+type CustomFieldValueDrafts = Record<string, Record<string, string>>;
 
 const stageLabels: Record<OpportunityStage, string> = {
   qualification: "Qualification",
@@ -87,6 +89,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     isIndexed: false,
     options: ""
   });
+  const [customFieldValueDrafts, setCustomFieldValueDrafts] = useState<CustomFieldValueDrafts>({});
+  const [savingCustomFieldRecordId, setSavingCustomFieldRecordId] = useState<string | null>(null);
+  const [customFieldMessage, setCustomFieldMessage] = useState("");
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
   const [leadMessage, setLeadMessage] = useState("");
@@ -504,6 +509,94 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }
 
+  function updateCustomFieldDraftValue(
+    entityType: RecordEntityType,
+    recordId: string,
+    fieldKey: string,
+    value: string
+  ) {
+    const draftKey = recordDraftKey(entityType, recordId);
+    setCustomFieldValueDrafts((current) => ({
+      ...current,
+      [draftKey]: {
+        ...(current[draftKey] ?? {}),
+        [fieldKey]: value
+      }
+    }));
+  }
+
+  async function saveRecordCustomFields(
+    entityType: RecordEntityType,
+    record: CustomFieldRecord,
+    definitions: CustomFieldDefinition[]
+  ) {
+    if (!apiBaseUrl) {
+      setCustomFieldMessage("API is not configured");
+      return;
+    }
+
+    const draftKey = recordDraftKey(entityType, record.id);
+    const draft = customFieldValueDrafts[draftKey];
+    if (!draft || Object.keys(draft).length === 0) {
+      return;
+    }
+
+    setSavingCustomFieldRecordId(draftKey);
+    setCustomFieldMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const customFields = customFieldPatchFromDraft(draft, definitions);
+      const updated = await client.updateCustomFieldValues(entityType, record.id, {
+        expectedVersion: record.version,
+        customFields
+      });
+      replaceUpdatedRecord(entityType, updated);
+      setCustomFieldValueDrafts((current) => {
+        const { [draftKey]: _saved, ...rest } = current;
+        return rest;
+      });
+      setCustomFieldMessage(`Updated ${recordLabel(updated)}`);
+    } catch (error) {
+      setCustomFieldMessage(errorSummary(error));
+    } finally {
+      setSavingCustomFieldRecordId(null);
+    }
+  }
+
+  function replaceUpdatedRecord(entityType: RecordEntityType, record: CustomFieldRecord) {
+    switch (entityType) {
+      case "account":
+        setAccounts((current) =>
+          current.map((candidate) =>
+            candidate.id === record.id ? (record as Account) : candidate
+          )
+        );
+        break;
+      case "contact":
+        setContacts((current) =>
+          current.map((candidate) =>
+            candidate.id === record.id ? (record as Contact) : candidate
+          )
+        );
+        break;
+      case "lead":
+        setLeads((current) =>
+          current.map((candidate) => (candidate.id === record.id ? (record as Lead) : candidate))
+        );
+        break;
+      case "opportunity":
+        setOpportunities((current) =>
+          current.map((candidate) =>
+            candidate.id === record.id ? (record as Opportunity) : candidate
+          )
+        );
+        break;
+    }
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Workspace navigation">
@@ -599,10 +692,15 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               <PipelineView
                 accountsById={accountsById}
                 customFieldDefinitions={customFieldsByEntity.get("opportunity") ?? []}
+                customFieldMessage={customFieldMessage}
+                customFieldValueDrafts={customFieldValueDrafts}
                 filteredOpportunities={filteredOpportunities}
+                savingCustomFieldRecordId={savingCustomFieldRecordId}
                 stageFilter={stageFilter}
                 syncingId={syncingId}
                 onAdvance={advanceOpportunity}
+                onCustomFieldDraftChange={updateCustomFieldDraftValue}
+                onSaveCustomFields={saveRecordCustomFields}
                 onStageFilter={setStageFilter}
               />
             ) : null}
@@ -620,7 +718,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               <AccountsView
                 accounts={filteredAccounts}
                 customFieldDefinitions={customFieldsByEntity.get("account") ?? []}
+                customFieldMessage={customFieldMessage}
+                customFieldValueDrafts={customFieldValueDrafts}
                 opportunities={opportunities}
+                savingCustomFieldRecordId={savingCustomFieldRecordId}
+                onCustomFieldDraftChange={updateCustomFieldDraftValue}
+                onSaveCustomFields={saveRecordCustomFields}
               />
             ) : null}
 
@@ -733,10 +836,24 @@ function LeadsView({
 function PipelineView(props: {
   accountsById: Map<string, Account>;
   customFieldDefinitions: CustomFieldDefinition[];
+  customFieldMessage: string;
+  customFieldValueDrafts: CustomFieldValueDrafts;
   filteredOpportunities: Opportunity[];
+  savingCustomFieldRecordId: string | null;
   stageFilter: OpportunityStage | "all";
   syncingId: string | null;
   onAdvance: (opportunity: Opportunity) => void;
+  onCustomFieldDraftChange: (
+    entityType: RecordEntityType,
+    recordId: string,
+    fieldKey: string,
+    value: string
+  ) => void;
+  onSaveCustomFields: (
+    entityType: RecordEntityType,
+    record: CustomFieldRecord,
+    definitions: CustomFieldDefinition[]
+  ) => void;
   onStageFilter: (stage: OpportunityStage | "all") => void;
 }) {
   return (
@@ -796,6 +913,15 @@ function PipelineView(props: {
                       definitions={props.customFieldDefinitions}
                       values={opportunity.customFields}
                     />
+                    <CustomFieldValueEditor
+                      definitions={props.customFieldDefinitions}
+                      drafts={props.customFieldValueDrafts}
+                      entityType="opportunity"
+                      record={opportunity}
+                      savingRecordId={props.savingCustomFieldRecordId}
+                      onDraftChange={props.onCustomFieldDraftChange}
+                      onSave={props.onSaveCustomFields}
+                    />
                     <div className="card-row">
                       <span>{formatDate(opportunity.expectedCloseDate)}</span>
                       <button
@@ -818,6 +944,7 @@ function PipelineView(props: {
           );
         })}
       </div>
+      {props.customFieldMessage ? <p className="data-message">{props.customFieldMessage}</p> : null}
     </>
   );
 }
@@ -825,11 +952,30 @@ function PipelineView(props: {
 function AccountsView({
   accounts,
   customFieldDefinitions,
-  opportunities
+  customFieldMessage,
+  customFieldValueDrafts,
+  opportunities,
+  savingCustomFieldRecordId,
+  onCustomFieldDraftChange,
+  onSaveCustomFields
 }: {
   accounts: Account[];
   customFieldDefinitions: CustomFieldDefinition[];
+  customFieldMessage: string;
+  customFieldValueDrafts: CustomFieldValueDrafts;
   opportunities: Opportunity[];
+  savingCustomFieldRecordId: string | null;
+  onCustomFieldDraftChange: (
+    entityType: RecordEntityType,
+    recordId: string,
+    fieldKey: string,
+    value: string
+  ) => void;
+  onSaveCustomFields: (
+    entityType: RecordEntityType,
+    record: CustomFieldRecord,
+    definitions: CustomFieldDefinition[]
+  ) => void;
 }) {
   return (
     <>
@@ -850,6 +996,7 @@ function AccountsView({
               {customFieldDefinitions.map((definition) => (
                 <th scope="col" key={definition.id}>{definition.label}</th>
               ))}
+              <th scope="col">Fields</th>
             </tr>
           </thead>
           <tbody>
@@ -857,6 +1004,8 @@ function AccountsView({
               const pipeline = opportunities
                 .filter((opportunity) => opportunity.accountId === account.id)
                 .reduce((sum, opportunity) => sum + (opportunity.amount ?? 0), 0);
+              const draftKey = recordDraftKey("account", account.id);
+              const hasDraft = hasCustomFieldDraft(customFieldValueDrafts, draftKey);
               return (
                 <tr key={account.id}>
                   <td>{account.name}</td>
@@ -867,15 +1016,36 @@ function AccountsView({
                   <td>{formatCurrency(pipeline)}</td>
                   {customFieldDefinitions.map((definition) => (
                     <td key={definition.id}>
-                      {formatCustomFieldValue(account.customFields[definition.key])}
+                      <CustomFieldInput
+                        definition={definition}
+                        value={draftCustomFieldValue(
+                          customFieldValueDrafts,
+                          account,
+                          definition,
+                          "account"
+                        )}
+                        onChange={(value) =>
+                          onCustomFieldDraftChange("account", account.id, definition.key, value)
+                        }
+                      />
                     </td>
                   ))}
+                  <td>
+                    <button
+                      className="table-action"
+                      disabled={!hasDraft || savingCustomFieldRecordId === draftKey}
+                      onClick={() => onSaveCustomFields("account", account, customFieldDefinitions)}
+                    >
+                      <Check size={16} /> Save
+                    </button>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+      {customFieldMessage ? <p className="data-message">{customFieldMessage}</p> : null}
     </>
   );
 }
@@ -1317,6 +1487,105 @@ function CustomFieldBadges({
   );
 }
 
+function CustomFieldValueEditor({
+  definitions,
+  drafts,
+  entityType,
+  record,
+  savingRecordId,
+  onDraftChange,
+  onSave
+}: {
+  definitions: CustomFieldDefinition[];
+  drafts: CustomFieldValueDrafts;
+  entityType: RecordEntityType;
+  record: CustomFieldRecord;
+  savingRecordId: string | null;
+  onDraftChange: (
+    entityType: RecordEntityType,
+    recordId: string,
+    fieldKey: string,
+    value: string
+  ) => void;
+  onSave: (
+    entityType: RecordEntityType,
+    record: CustomFieldRecord,
+    definitions: CustomFieldDefinition[]
+  ) => void;
+}) {
+  if (definitions.length === 0) {
+    return null;
+  }
+
+  const draftKey = recordDraftKey(entityType, record.id);
+  const hasDraft = hasCustomFieldDraft(drafts, draftKey);
+
+  return (
+    <div className="field-editor">
+      {definitions.map((definition) => (
+        <label key={definition.id}>
+          <span>{definition.label}</span>
+          <CustomFieldInput
+            definition={definition}
+            value={draftCustomFieldValue(drafts, record, definition, entityType)}
+            onChange={(value) => onDraftChange(entityType, record.id, definition.key, value)}
+          />
+        </label>
+      ))}
+      <button
+        className="table-action"
+        disabled={!hasDraft || savingRecordId === draftKey}
+        onClick={() => onSave(entityType, record, definitions)}
+      >
+        <Check size={16} /> Save fields
+      </button>
+    </div>
+  );
+}
+
+function CustomFieldInput({
+  definition,
+  value,
+  onChange
+}: {
+  definition: CustomFieldDefinition;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const options = customFieldOptions(definition);
+
+  if (definition.fieldType === "boolean") {
+    return (
+      <select className="field-input" value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Unset</option>
+        <option value="true">True</option>
+        <option value="false">False</option>
+      </select>
+    );
+  }
+
+  if (definition.fieldType === "single_select" && options.length > 0) {
+    return (
+      <select className="field-input" value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Unset</option>
+        {options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
+    );
+  }
+
+  return (
+    <input
+      className="field-input"
+      type={definition.fieldType === "number" ? "number" : definition.fieldType === "date" ? "date" : "text"}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      placeholder={definition.fieldType === "multi_select" ? "value, value" : undefined}
+    />
+  );
+}
+
 function viewModeTitle(viewMode: ViewMode) {
   switch (viewMode) {
     case "pipeline":
@@ -1362,6 +1631,77 @@ function isSelectField(fieldType: CustomFieldType) {
   return fieldType === "single_select" || fieldType === "multi_select";
 }
 
+function recordDraftKey(entityType: RecordEntityType, recordId: string) {
+  return `${entityType}:${recordId}`;
+}
+
+function hasCustomFieldDraft(drafts: CustomFieldValueDrafts, draftKey: string) {
+  return Object.keys(drafts[draftKey] ?? {}).length > 0;
+}
+
+function draftCustomFieldValue(
+  drafts: CustomFieldValueDrafts,
+  record: CustomFieldRecord,
+  definition: CustomFieldDefinition,
+  entityType: RecordEntityType
+) {
+  return (
+    drafts[recordDraftKey(entityType, record.id)]?.[definition.key] ??
+    formatCustomFieldValue(record.customFields[definition.key])
+  );
+}
+
+function customFieldPatchFromDraft(
+  draft: Record<string, string>,
+  definitions: CustomFieldDefinition[]
+) {
+  const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
+  const customFields: Record<string, CustomFieldPrimitive> = {};
+
+  for (const [key, value] of Object.entries(draft)) {
+    const definition = definitionByKey.get(key);
+    if (!definition) {
+      continue;
+    }
+    customFields[key] = parseCustomFieldValue(definition, value);
+  }
+
+  return customFields;
+}
+
+function parseCustomFieldValue(
+  definition: CustomFieldDefinition,
+  value: string
+): CustomFieldPrimitive {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  switch (definition.fieldType) {
+    case "number":
+      return Number(trimmed);
+    case "boolean":
+      return trimmed === "true";
+    case "multi_select":
+      return trimmed.split(",").map((item) => item.trim()).filter(Boolean);
+    case "currency":
+      return { amount: Number(trimmed), currency: "USD" };
+    case "user_ref":
+    case "account_ref":
+      return { id: trimmed, label: trimmed };
+    default:
+      return trimmed;
+  }
+}
+
+function customFieldOptions(definition: CustomFieldDefinition) {
+  const options = definition.schema?.options;
+  return Array.isArray(options) && options.every((option) => typeof option === "string")
+    ? options
+    : [];
+}
+
 function normalizeKey(value: string) {
   return value
     .trim()
@@ -1397,6 +1737,18 @@ function formatCustomFieldValue(value: CustomFieldPrimitive | undefined): string
   }
 
   return String(value);
+}
+
+function recordLabel(record: CustomFieldRecord) {
+  if ("name" in record) {
+    return record.name;
+  }
+
+  if ("contactName" in record) {
+    return record.contactName;
+  }
+
+  return `${record.firstName} ${record.lastName}`;
 }
 
 function formatCurrency(value: number) {

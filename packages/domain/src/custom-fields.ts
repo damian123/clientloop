@@ -104,3 +104,22 @@ export function validateCustomFields(
     }
   }
 }
+
+export function validateCustomFieldPatch(
+  definitions: CustomFieldDefinition[],
+  values: Record<string, CustomFieldPrimitive>
+): void {
+  const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
+
+  for (const [key, value] of Object.entries(values)) {
+    const definition = definitionByKey.get(key);
+
+    if (!definition) {
+      throw new CustomFieldValidationError(`Unknown custom field "${key}"`);
+    }
+
+    if (!validateCustomFieldValue(definition.fieldType, value)) {
+      throw new CustomFieldValidationError(`Invalid value for custom field "${key}"`);
+    }
+  }
+}

@@ -8,6 +8,7 @@ import type {
   Note,
   Opportunity,
   Page,
+  RecordEntityType,
   Task,
   TenantId,
   WebhookSubscription
@@ -23,11 +24,13 @@ import type {
   CreateTaskInput,
   CreateWebhookSubscriptionInput,
   CreateWebhookSubscriptionResponse,
+  CustomFieldValueUpdateResult,
   DashboardResponse,
   LeadConversionResult,
   ListQuery,
   SearchQuery,
   SearchResult,
+  UpdateCustomFieldValuesInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type { OutboxEvent } from "@clientloop/domain";
@@ -76,6 +79,13 @@ export interface CRMRepository {
     principal: AccessPrincipal,
     input: CreateCustomFieldDefinitionInput
   ): Promise<CustomFieldDefinition>;
+  updateCustomFieldValues(input: {
+    principal: AccessPrincipal;
+    entityType: RecordEntityType;
+    id: string;
+    body: UpdateCustomFieldValuesInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<CustomFieldValueUpdateResult>;
   search(tenantId: TenantId, query: SearchQuery): Promise<SearchResult[]>;
   listWebhookSubscriptions(tenantId: TenantId): Promise<WebhookSubscription[]>;
   createWebhookSubscription(

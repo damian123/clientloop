@@ -133,6 +133,11 @@ export const createCustomFieldDefinitionSchema = z.object({
   schema: z.record(z.unknown()).default({})
 });
 
+export const updateCustomFieldValuesSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  customFields: customFieldsSchema
+});
+
 export const createWebhookSubscriptionSchema = z.object({
   url: z.string().url(),
   eventTypes: z.array(webhookEventTypeSchema).min(1),
@@ -229,6 +234,13 @@ export const searchResultSchema = z.object({
   description: z.string().optional()
 });
 
+export const customFieldValueUpdateResultSchema = z.union([
+  accountSchema,
+  contactSchema,
+  leadSchema,
+  opportunitySchema
+]);
+
 export const apiSchemas = {
   account: accountSchema,
   contact: contactSchema,
@@ -253,7 +265,8 @@ export const apiSchemas = {
   webhookSubscriptions: z.array(webhookSubscriptionSchema),
   createWebhookSubscriptionResponse: createWebhookSubscriptionResponseSchema,
   contactImportPreview: contactImportPreviewSchema,
-  contactImportResult: contactImportResultSchema
+  contactImportResult: contactImportResultSchema,
+  customFieldValueUpdateResult: customFieldValueUpdateResultSchema
 };
 
 export type ListQuery = z.infer<typeof listQuerySchema>;
@@ -269,6 +282,8 @@ export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
 export type CreateCustomFieldDefinitionInput = z.infer<typeof createCustomFieldDefinitionSchema>;
+export type UpdateCustomFieldValuesInput = z.infer<typeof updateCustomFieldValuesSchema>;
+export type CustomFieldValueUpdateResult = z.infer<typeof customFieldValueUpdateResultSchema>;
 export type CreateWebhookSubscriptionInput = z.infer<typeof createWebhookSubscriptionSchema>;
 export type CreateWebhookSubscriptionResponse = z.infer<typeof createWebhookSubscriptionResponseSchema>;
 export type DevLoginInput = z.infer<typeof devLoginSchema>;
