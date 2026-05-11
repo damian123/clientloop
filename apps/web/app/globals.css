@@ -475,6 +475,25 @@ td {
   font-size: 14px;
 }
 
+.table-subtext {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.table-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--panel);
+  color: var(--text);
+}
+
 tr:last-child td {
   border-bottom: 0;
 }
@@ -588,6 +607,18 @@ tr:last-child td {
 .status-pill.partner {
   background: #f6ead6;
   color: var(--amber);
+}
+
+.status-pill.new,
+.status-pill.qualification {
+  background: #e8eefc;
+  color: var(--blue);
+}
+
+.status-pill.qualified,
+.status-pill.converted {
+  background: #e1f3e8;
+  color: var(--green);
 }
 
 .task-list,

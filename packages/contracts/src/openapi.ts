@@ -53,6 +53,22 @@ export const openApiDocument = {
       get: { summary: "List leads" },
       post: { summary: "Create lead" }
     },
+    "/v1/leads/{id}/convert": {
+      post: {
+        summary: "Convert a lead into account, contact, and optional opportunity",
+        parameters: [
+          {
+            name: "Idempotency-Key",
+            in: "header",
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Converted" },
+          "409": { description: "Version conflict or invalid lead state" }
+        }
+      }
+    },
     "/v1/opportunities": {
       get: { summary: "List opportunities" },
       post: { summary: "Create opportunity" }

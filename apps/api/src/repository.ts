@@ -14,6 +14,7 @@ import type {
 } from "@clientloop/domain";
 import type {
   AppendNoteInput,
+  ConvertLeadInput,
   CreateAccountInput,
   CreateContactInput,
   CreateLeadInput,
@@ -22,6 +23,7 @@ import type {
   CreateWebhookSubscriptionInput,
   CreateWebhookSubscriptionResponse,
   DashboardResponse,
+  LeadConversionResult,
   ListQuery,
   SearchQuery,
   SearchResult,
@@ -42,6 +44,12 @@ export interface CRMRepository {
   createContact(principal: AccessPrincipal, input: CreateContactInput): Promise<Contact>;
   listLeads(tenantId: TenantId, query: ListQuery): Promise<Page<Lead>>;
   createLead(principal: AccessPrincipal, input: CreateLeadInput): Promise<Lead>;
+  convertLead(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: ConvertLeadInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<LeadConversionResult>;
   listOpportunities(tenantId: TenantId, query: ListQuery): Promise<Page<Opportunity>>;
   createOpportunity(
     principal: AccessPrincipal,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seedManagerId, seedOpportunities } from "@clientloop/domain";
+import { seedLeads, seedManagerId, seedOpportunities } from "@clientloop/domain";
 import { InMemoryCRMRepository } from "../adapters/in-memory-repository";
 import { buildServer } from "../server";
 
@@ -54,6 +54,71 @@ describe("CRM API", () => {
     });
 
     expect(response.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("converts a lead into CRM records", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+    const lead = seedLeads[0]!;
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/leads/${lead.id}/convert`,
+      headers: {
+        "x-user-id": seedManagerId,
+        "Idempotency-Key": "convert-lead-test"
+      },
+      payload: {
+        expectedVersion: lead.version,
+        accountName: lead.companyName,
+        opportunity: {
+          name: `${lead.companyName} new business`,
+          amount: 42000,
+          currency: "USD",
+          ownerUserId: seedManagerId,
+          probabilityPct: 25
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().lead.status).toBe("converted");
+    expect(response.json().lead.convertedAccountId).toBe(response.json().account.id);
+    expect(response.json().lead.convertedContactId).toBe(response.json().contact.id);
+    expect(response.json().lead.convertedOpportunityId).toBe(response.json().opportunity.id);
+    expect(response.json().contact.email).toBe(lead.email);
+    expect(response.json().opportunity.amount).toBe(42000);
+
+    const dashboardAfterConversion = await app.inject({
+      method: "GET",
+      url: "/v1/dashboard"
+    });
+    const convertedCounts = {
+      accounts: dashboardAfterConversion.json().accounts.length,
+      contacts: dashboardAfterConversion.json().contacts.length,
+      opportunities: dashboardAfterConversion.json().opportunities.length
+    };
+
+    const staleResponse = await app.inject({
+      method: "POST",
+      url: `/v1/leads/${lead.id}/convert`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        expectedVersion: lead.version,
+        accountName: lead.companyName
+      }
+    });
+
+    expect(staleResponse.statusCode).toBe(409);
+    const dashboardAfterConflict = await app.inject({
+      method: "GET",
+      url: "/v1/dashboard"
+    });
+    expect(dashboardAfterConflict.json().accounts).toHaveLength(convertedCounts.accounts);
+    expect(dashboardAfterConflict.json().contacts).toHaveLength(convertedCounts.contacts);
+    expect(dashboardAfterConflict.json().opportunities).toHaveLength(convertedCounts.opportunities);
     await app.close();
   });
 

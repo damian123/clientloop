@@ -9,3 +9,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0005-csv-import-export.md](./0005-csv-import-export.md)
 - [0006-session-auth-csrf.md](./0006-session-auth-csrf.md)
 - [0007-frontend-session-wiring.md](./0007-frontend-session-wiring.md)
+- [0008-lead-conversion-workflow.md](./0008-lead-conversion-workflow.md)

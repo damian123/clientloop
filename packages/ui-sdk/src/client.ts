@@ -7,6 +7,7 @@ import {
   createTaskSchema,
   createWebhookSubscriptionSchema,
   contactImportRequestSchema,
+  convertLeadSchema,
   devLoginSchema,
   exportEntitySchema,
   type AppendNoteInput,
@@ -14,6 +15,7 @@ import {
   type ContactImportPreview,
   type ContactImportRequest,
   type ContactImportResult,
+  type ConvertLeadInput,
   type CreateAccountInput,
   type CreateContactInput,
   type CreateLeadInput,
@@ -24,6 +26,7 @@ import {
   type DashboardResponse,
   type DevLoginInput,
   type ExportEntity,
+  type LeadConversionResult,
   type SearchResult,
   type SessionResponse,
   type UpdateOpportunityInput
@@ -139,6 +142,20 @@ export class CRMClient {
       "/v1/leads",
       this.jsonRequest("POST", createLeadSchema.parse(input)),
       apiSchemas.lead
+    );
+  }
+
+  async convertLead(
+    id: string,
+    input: ConvertLeadInput,
+    options: { idempotencyKey?: string | undefined } = {}
+  ): Promise<LeadConversionResult> {
+    return this.request(
+      `/v1/leads/${id}/convert`,
+      this.jsonRequest("POST", convertLeadSchema.parse(input), {
+        "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID()
+      }),
+      apiSchemas.leadConversionResult
     );
   }
 

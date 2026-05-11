@@ -72,6 +72,36 @@ export const updateOpportunitySchema = z.object({
   customFields: customFieldsSchema.optional()
 });
 
+export const convertLeadOpportunitySchema = z.object({
+  name: z.string().min(1),
+  stage: opportunityStageSchema.default("qualification"),
+  amount: z.number().nonnegative().optional(),
+  currency: z.string().length(3).default("USD"),
+  expectedCloseDate: z.string().optional(),
+  ownerUserId: idSchema.optional(),
+  probabilityPct: z.number().int().min(0).max(100).optional(),
+  customFields: customFieldsSchema.default({})
+});
+
+export const convertLeadSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  accountId: idSchema.optional(),
+  accountName: z.string().min(1).optional(),
+  contactFirstName: z.string().min(1).optional(),
+  contactLastName: z.string().min(1).optional(),
+  opportunity: convertLeadOpportunitySchema.optional()
+}).refine((input) => input.accountId || input.accountName, {
+  message: "accountId or accountName is required",
+  path: ["accountName"]
+});
+
+export const leadConversionResultSchema = z.object({
+  lead: leadSchema,
+  account: accountSchema,
+  contact: contactSchema,
+  opportunity: opportunitySchema.nullish()
+});
+
 export const createTaskSchema = z.object({
   parent: z.object({ type: entityTypeSchema, id: idSchema }).optional(),
   title: z.string().min(1),
@@ -200,6 +230,7 @@ export const apiSchemas = {
   contactPage: pageSchema(contactSchema),
   leadPage: pageSchema(leadSchema),
   opportunityPage: pageSchema(opportunitySchema),
+  leadConversionResult: leadConversionResultSchema,
   taskPage: pageSchema(taskSchema),
   activityPage: pageSchema(activitySchema),
   dashboard: dashboardSchema,
@@ -216,6 +247,9 @@ export type ListQuery = z.infer<typeof listQuerySchema>;
 export type CreateAccountInput = z.infer<typeof createAccountSchema>;
 export type CreateContactInput = z.infer<typeof createContactSchema>;
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
+export type ConvertLeadInput = z.infer<typeof convertLeadSchema>;
+export type ConvertLeadOpportunityInput = z.infer<typeof convertLeadOpportunitySchema>;
+export type LeadConversionResult = z.infer<typeof leadConversionResultSchema>;
 export type CreateOpportunityInput = z.infer<typeof createOpportunitySchema>;
 export type UpdateOpportunityInput = z.infer<typeof updateOpportunitySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;

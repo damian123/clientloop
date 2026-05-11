@@ -2,6 +2,7 @@ import type {
   AuditFields,
   EntityId,
   ISODate,
+  Lead,
   Opportunity,
   OpportunityStage,
   Task,
@@ -102,5 +103,39 @@ export function completeTask(input: {
     updatedAt: input.now,
     updatedBy: input.actorUserId,
     version: input.task.version + 1
+  };
+}
+
+export function convertLead(input: {
+  lead: Lead;
+  actorUserId: EntityId;
+  expectedVersion: number;
+  now: ISODate;
+  convertedAccountId: EntityId;
+  convertedContactId: EntityId;
+  convertedOpportunityId?: EntityId | null | undefined;
+}): Lead {
+  if (input.lead.version !== input.expectedVersion) {
+    throw new DomainRuleError("Lead version conflict");
+  }
+
+  if (input.lead.status === "converted") {
+    throw new DomainRuleError("Lead is already converted");
+  }
+
+  if (input.lead.status === "disqualified") {
+    throw new DomainRuleError("Disqualified leads cannot be converted");
+  }
+
+  return {
+    ...input.lead,
+    status: "converted",
+    convertedAt: input.now,
+    convertedAccountId: input.convertedAccountId,
+    convertedContactId: input.convertedContactId,
+    convertedOpportunityId: input.convertedOpportunityId,
+    updatedAt: input.now,
+    updatedBy: input.actorUserId,
+    version: input.lead.version + 1
   };
 }

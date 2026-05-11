@@ -3,6 +3,7 @@ import {
   assertCan,
   changeOpportunityStage,
   completeTask as completeTaskRule,
+  convertLead as convertLeadRule,
   createAuditFields,
   createDomainEvent,
   createSeedData,
@@ -25,6 +26,7 @@ import {
 } from "@clientloop/domain";
 import type {
   AppendNoteInput,
+  ConvertLeadInput,
   CreateAccountInput,
   CreateContactInput,
   CreateLeadInput,
@@ -33,6 +35,7 @@ import type {
   CreateWebhookSubscriptionInput,
   CreateWebhookSubscriptionResponse,
   DashboardResponse,
+  LeadConversionResult,
   ListQuery,
   SearchQuery,
   SearchResult,
@@ -58,6 +61,7 @@ export class InMemoryCRMRepository implements CRMRepository {
   private readonly outbox: OutboxEvent[] = [];
   private readonly webhookSubscriptions: WebhookDeliveryTarget[] = [];
   private readonly idempotencyResults = new Map<string, Opportunity>();
+  private readonly leadConversionResults = new Map<string, LeadConversionResult>();
 
   constructor(seed: Store = createSeedData()) {
     this.store = seed;
@@ -175,6 +179,97 @@ export class InMemoryCRMRepository implements CRMRepository {
     this.store.leads.unshift(lead);
     this.enqueueEvent("lead.created", "lead", lead.id, principal, now, { source: lead.source });
     return lead;
+  }
+
+  async convertLead(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: ConvertLeadInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<LeadConversionResult> {
+    const idempotencyScope = input.idempotencyKey
+      ? `${input.principal.tenantId}:lead:${input.id}:convert:${input.idempotencyKey}`
+      : undefined;
+
+    if (idempotencyScope && this.leadConversionResults.has(idempotencyScope)) {
+      return this.leadConversionResults.get(idempotencyScope)!;
+    }
+
+    const leadIndex = this.store.leads.findIndex(
+      (lead) => lead.tenantId === input.principal.tenantId && lead.id === input.id
+    );
+
+    if (leadIndex < 0) {
+      throw new Error("Lead not found");
+    }
+
+    const currentLead = this.store.leads[leadIndex]!;
+    assertCan(input.principal, "lead", "update", { tenantId: input.principal.tenantId });
+    assertCan(input.principal, "contact", "create", { tenantId: input.principal.tenantId });
+    if (!input.body.accountId) {
+      assertCan(input.principal, "account", "create", { tenantId: input.principal.tenantId });
+    }
+    if (input.body.opportunity) {
+      assertCan(input.principal, "opportunity", "create", { tenantId: input.principal.tenantId });
+    }
+    const now = new Date().toISOString();
+
+    const existingAccount = input.body.accountId
+      ? this.findAccountForConversion(input.principal.tenantId, input.body.accountId)
+      : null;
+    const accountId = existingAccount?.id ?? randomUUID();
+    const contactId = randomUUID();
+    const opportunityId = input.body.opportunity ? randomUUID() : null;
+    const updatedLead = convertLeadRule({
+      lead: currentLead,
+      actorUserId: input.principal.user.id,
+      expectedVersion: input.body.expectedVersion,
+      now,
+      convertedAccountId: accountId,
+      convertedContactId: contactId,
+      convertedOpportunityId: opportunityId
+    });
+    const account =
+      existingAccount ?? this.createConvertedAccount(input.principal, accountId, input.body.accountName!, now);
+    const contact = this.createConvertedContact(
+      input.principal,
+      contactId,
+      currentLead,
+      account.id,
+      input.body,
+      now
+    );
+    const opportunity =
+      input.body.opportunity && opportunityId
+        ? this.createConvertedOpportunity(
+            input.principal,
+            opportunityId,
+            account.id,
+            contact.id,
+            input.body.opportunity,
+            now
+          )
+        : null;
+
+    this.store.leads[leadIndex] = updatedLead;
+    this.enqueueEvent("lead.converted", "lead", updatedLead.id, input.principal, now, {
+      accountId: account.id,
+      contactId: contact.id,
+      opportunityId: opportunity?.id ?? null
+    });
+
+    const result = {
+      lead: updatedLead,
+      account,
+      contact,
+      opportunity
+    };
+
+    if (idempotencyScope) {
+      this.leadConversionResults.set(idempotencyScope, result);
+    }
+
+    return result;
   }
 
   async listOpportunities(tenantId: TenantId, query: ListQuery): Promise<Page<Opportunity>> {
@@ -558,6 +653,102 @@ export class InMemoryCRMRepository implements CRMRepository {
     };
   }
 
+  private findAccountForConversion(tenantId: TenantId, accountId: string): Account {
+    const account = this.store.accounts.find(
+      (candidate) =>
+        candidate.tenantId === tenantId && candidate.id === accountId && !candidate.archivedAt
+    );
+
+    if (!account) {
+      throw new Error("Account not found");
+    }
+
+    return account;
+  }
+
+  private createConvertedAccount(
+    principal: AccessPrincipal,
+    id: string,
+    name: string,
+    now: string
+  ): Account {
+    assertCan(principal, "account", "create", { tenantId: principal.tenantId });
+    const account: Account = {
+      id,
+      name,
+      ownerUserId: principal.user.id,
+      status: "prospect",
+      customFields: {},
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+
+    this.store.accounts.unshift(account);
+    this.enqueueEvent("account.created", "account", account.id, principal, now, {
+      name: account.name
+    });
+    return account;
+  }
+
+  private createConvertedContact(
+    principal: AccessPrincipal,
+    id: string,
+    lead: Lead,
+    accountId: string,
+    input: ConvertLeadInput,
+    now: string
+  ): Contact {
+    const fallbackName = splitLeadName(lead.contactName);
+    const contact: Contact = {
+      id,
+      accountId,
+      firstName: input.contactFirstName ?? fallbackName.firstName,
+      lastName: input.contactLastName ?? fallbackName.lastName,
+      email: lead.email,
+      ownerUserId: principal.user.id,
+      customFields: {},
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+
+    this.store.contacts.unshift(contact);
+    this.enqueueEvent("contact.created", "contact", contact.id, principal, now, {
+      email: contact.email ?? null,
+      leadId: lead.id
+    });
+    return contact;
+  }
+
+  private createConvertedOpportunity(
+    principal: AccessPrincipal,
+    id: string,
+    accountId: string,
+    contactId: string,
+    input: NonNullable<ConvertLeadInput["opportunity"]>,
+    now: string
+  ): Opportunity {
+    assertCan(principal, "opportunity", "create", { tenantId: principal.tenantId });
+    const opportunity: Opportunity = {
+      id,
+      accountId,
+      primaryContactId: contactId,
+      name: input.name,
+      stage: input.stage,
+      amount: input.amount,
+      currency: input.currency,
+      expectedCloseDate: input.expectedCloseDate,
+      ownerUserId: input.ownerUserId ?? principal.user.id,
+      probabilityPct: input.probabilityPct,
+      customFields: input.customFields,
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+
+    this.store.opportunities.unshift(opportunity);
+    this.enqueueEvent("opportunity.created", "opportunity", opportunity.id, principal, now, {
+      stage: opportunity.stage,
+      amount: opportunity.amount ?? null
+    });
+    return opportunity;
+  }
+
   private enqueueEvent(
     type: OutboxEvent["type"],
     entityType: OutboxEvent["entity"]["type"],
@@ -581,4 +772,11 @@ export class InMemoryCRMRepository implements CRMRepository {
       attempts: 0
     });
   }
+}
+
+function splitLeadName(contactName: string): { firstName: string; lastName: string } {
+  const parts = contactName.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.shift() ?? "Unknown";
+  const lastName = parts.length > 0 ? parts.join(" ") : "Unknown";
+  return { firstName, lastName };
 }

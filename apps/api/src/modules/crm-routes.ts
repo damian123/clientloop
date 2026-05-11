@@ -8,6 +8,7 @@ import {
   createOpportunitySchema,
   createTaskSchema,
   createWebhookSubscriptionSchema,
+  convertLeadSchema,
   contactImportRequestSchema,
   exportEntitySchema,
   listQuerySchema,
@@ -70,6 +71,19 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
     const principal = await principalFromRequest(request, repository);
     const lead = await repository.createLead(principal, createLeadSchema.parse(request.body));
     return reply.code(201).send(lead);
+  });
+
+  app.post("/v1/leads/:id/convert", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    return repository.convertLead({
+      principal,
+      id: params.id,
+      body: convertLeadSchema.parse(request.body),
+      idempotencyKey: Array.isArray(request.headers["idempotency-key"])
+        ? request.headers["idempotency-key"][0]
+        : request.headers["idempotency-key"]
+    });
   });
 
   app.get("/v1/opportunities", async (request) => {

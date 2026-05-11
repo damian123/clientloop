@@ -4,6 +4,7 @@ import {
   assertCan,
   changeOpportunityStage,
   completeTask as completeTaskRule,
+  convertLead as convertLeadRule,
   createAuditFields,
   targetFromRecord,
   type AccessPrincipal,
@@ -32,6 +33,7 @@ import {
 } from "@clientloop/domain";
 import type {
   AppendNoteInput,
+  ConvertLeadInput,
   CreateAccountInput,
   CreateContactInput,
   CreateLeadInput,
@@ -40,6 +42,7 @@ import type {
   CreateWebhookSubscriptionInput,
   CreateWebhookSubscriptionResponse,
   DashboardResponse,
+  LeadConversionResult,
   ListQuery,
   SearchQuery,
   SearchResult,
@@ -356,6 +359,170 @@ export class PrismaCRMRepository implements CRMRepository {
     });
 
     return this.toLead(lead);
+  }
+
+  async convertLead(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: ConvertLeadInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<LeadConversionResult> {
+    const route = `POST /v1/leads/${input.id}/convert`;
+    const requestHash = this.hashRequest(input.body);
+
+    if (input.idempotencyKey) {
+      const existing = await this.prisma.idempotencyKey.findUnique({
+        where: {
+          tenantId_route_key: {
+            tenantId: input.principal.tenantId,
+            route,
+            key: input.idempotencyKey
+          }
+        }
+      });
+
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new Error("Idempotency key reused with a different request");
+        }
+        return existing.response as unknown as LeadConversionResult;
+      }
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const currentRecord = await tx.lead.findFirst({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          archivedAt: null
+        }
+      });
+
+      if (!currentRecord) {
+        throw new Error("Lead not found");
+      }
+
+      const current = this.toLead(currentRecord);
+      assertCan(input.principal, "lead", "update", { tenantId: input.principal.tenantId });
+      assertCan(input.principal, "contact", "create", { tenantId: input.principal.tenantId });
+      const now = new Date();
+      const audit = createAuditFields({
+        tenantId: input.principal.tenantId,
+        actorUserId: input.principal.user.id,
+        now: now.toISOString()
+      });
+
+      const account = input.body.accountId
+        ? await tx.account.findFirst({
+            where: {
+              id: input.body.accountId,
+              tenantId: input.principal.tenantId,
+              archivedAt: null
+            }
+          })
+        : await this.createAccountForLeadConversion(tx, input.principal, input.body.accountName!, now);
+
+      if (!account) {
+        throw new Error("Account not found");
+      }
+
+      const fallbackName = splitLeadName(current.contactName);
+      const contact = await tx.contact.create({
+        data: {
+          id: randomUUID(),
+          tenantId: audit.tenantId,
+          accountId: account.id,
+          firstName: input.body.contactFirstName ?? fallbackName.firstName,
+          lastName: input.body.contactLastName ?? fallbackName.lastName,
+          email: current.email ?? null,
+          ownerUserId: input.principal.user.id,
+          customFields: this.asJson({}),
+          createdAt: now,
+          updatedAt: now,
+          createdBy: audit.createdBy,
+          updatedBy: audit.updatedBy,
+          version: audit.version
+        }
+      });
+      await this.enqueueEvent(tx, "contact.created", "contact", contact.id, input.principal, now, {
+        email: contact.email ?? null,
+        leadId: current.id
+      });
+
+      const opportunity = input.body.opportunity
+        ? await this.createOpportunityForLeadConversion(
+            tx,
+            input.principal,
+            account.id,
+            contact.id,
+            input.body.opportunity,
+            now
+          )
+        : null;
+      const updatedLead = convertLeadRule({
+        lead: current,
+        actorUserId: input.principal.user.id,
+        expectedVersion: input.body.expectedVersion,
+        now: now.toISOString(),
+        convertedAccountId: account.id,
+        convertedContactId: contact.id,
+        convertedOpportunityId: opportunity?.id ?? null
+      });
+
+      const result = await tx.lead.updateMany({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          version: input.body.expectedVersion,
+          archivedAt: null
+        },
+        data: {
+          status: updatedLead.status,
+          convertedAt: now,
+          convertedAccountId: account.id,
+          convertedContactId: contact.id,
+          convertedOpportunityId: opportunity?.id ?? null,
+          updatedAt: now,
+          updatedBy: input.principal.user.id,
+          version: updatedLead.version
+        }
+      });
+
+      if (result.count !== 1) {
+        throw new Error("Version conflict");
+      }
+
+      const persistedLead = await tx.lead.findUniqueOrThrow({
+        where: { id: input.id }
+      });
+      const response: LeadConversionResult = {
+        lead: this.toLead(persistedLead),
+        account: this.toAccount(account),
+        contact: this.toContact(contact),
+        opportunity: opportunity ? this.toOpportunity(opportunity) : null
+      };
+
+      await this.enqueueEvent(tx, "lead.converted", "lead", response.lead.id, input.principal, now, {
+        accountId: account.id,
+        contactId: contact.id,
+        opportunityId: opportunity?.id ?? null
+      });
+
+      if (input.idempotencyKey) {
+        await tx.idempotencyKey.create({
+          data: {
+            tenantId: input.principal.tenantId,
+            route,
+            key: input.idempotencyKey,
+            requestHash,
+            response: this.asJson(response),
+            expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000)
+          }
+        });
+      }
+
+      return response;
+    });
   }
 
   async listOpportunities(tenantId: TenantId, query: ListQuery): Promise<Page<Opportunity>> {
@@ -1170,6 +1337,85 @@ export class PrismaCRMRepository implements CRMRepository {
     };
   }
 
+  private async createAccountForLeadConversion(
+    tx: PrismaTransaction,
+    principal: AccessPrincipal,
+    name: string,
+    now: Date
+  ): Promise<Prisma.AccountGetPayload<object>> {
+    assertCan(principal, "account", "create", { tenantId: principal.tenantId });
+    const audit = createAuditFields({
+      tenantId: principal.tenantId,
+      actorUserId: principal.user.id,
+      now: now.toISOString()
+    });
+    const account = await tx.account.create({
+      data: {
+        id: randomUUID(),
+        tenantId: audit.tenantId,
+        name,
+        ownerUserId: principal.user.id,
+        status: "prospect",
+        customFields: this.asJson({}),
+        createdAt: now,
+        updatedAt: now,
+        createdBy: audit.createdBy,
+        updatedBy: audit.updatedBy,
+        version: audit.version
+      }
+    });
+
+    await this.enqueueEvent(tx, "account.created", "account", account.id, principal, now, {
+      name
+    });
+    return account;
+  }
+
+  private async createOpportunityForLeadConversion(
+    tx: PrismaTransaction,
+    principal: AccessPrincipal,
+    accountId: string,
+    contactId: string,
+    input: NonNullable<ConvertLeadInput["opportunity"]>,
+    now: Date
+  ): Promise<Prisma.OpportunityGetPayload<object>> {
+    assertCan(principal, "opportunity", "create", { tenantId: principal.tenantId });
+    const audit = createAuditFields({
+      tenantId: principal.tenantId,
+      actorUserId: principal.user.id,
+      now: now.toISOString()
+    });
+    const opportunity = await tx.opportunity.create({
+      data: {
+        id: randomUUID(),
+        tenantId: audit.tenantId,
+        accountId,
+        primaryContactId: contactId,
+        name: input.name,
+        stage: input.stage,
+        amount: input.amount ?? null,
+        currency: input.currency,
+        expectedCloseDate: input.expectedCloseDate
+          ? this.dateFromDateOnly(input.expectedCloseDate)
+          : null,
+        ownerUserId: input.ownerUserId ?? principal.user.id,
+        probabilityPct: input.probabilityPct ?? null,
+        customFields: this.asJson(input.customFields),
+        createdAt: now,
+        updatedAt: now,
+        createdBy: audit.createdBy,
+        updatedBy: audit.updatedBy,
+        version: audit.version
+      }
+    });
+
+    await this.enqueueEvent(tx, "opportunity.created", "opportunity", opportunity.id, principal, now, {
+      stage: opportunity.stage,
+      amount: input.amount ?? null
+    });
+    return opportunity;
+  }
+
   private page<T extends { id: string }>(items: T[], limit = 50): Page<T> {
     const pageItems = items.slice(0, limit);
     const lastItem = pageItems.at(-1);
@@ -1238,4 +1484,11 @@ export class PrismaCRMRepository implements CRMRepository {
       }
     });
   }
+}
+
+function splitLeadName(contactName: string): { firstName: string; lastName: string } {
+  const parts = contactName.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.shift() ?? "Unknown";
+  const lastName = parts.length > 0 ? parts.join(" ") : "Unknown";
+  return { firstName, lastName };
 }

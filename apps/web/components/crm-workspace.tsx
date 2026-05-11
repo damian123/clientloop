@@ -14,6 +14,7 @@ import {
   RefreshCcw,
   Search,
   Upload,
+  UserPlus,
   UserRound
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +27,7 @@ import type {
 import type {
   Account,
   Contact,
+  Lead,
   Opportunity,
   OpportunityStage,
   Task
@@ -33,7 +35,7 @@ import type {
 import { opportunityStageOrder, seedManagerId, seedTenantId } from "@clientloop/domain";
 import { CRMClient, CRMClientError } from "@clientloop/ui-sdk";
 
-type ViewMode = "pipeline" | "accounts" | "contacts" | "data";
+type ViewMode = "pipeline" | "leads" | "accounts" | "contacts" | "data";
 
 const stageLabels: Record<OpportunityStage, string> = {
   qualification: "Qualification",
@@ -52,12 +54,16 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [viewMode, setViewMode] = useState<ViewMode>("pipeline");
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<OpportunityStage | "all">("all");
+  const [accounts, setAccounts] = useState<Account[]>(initialDashboard.accounts);
+  const [leads, setLeads] = useState<Lead[]>(initialDashboard.leads);
   const [opportunities, setOpportunities] = useState<Opportunity[]>(
     initialDashboard.opportunities
   );
   const [contacts, setContacts] = useState<Contact[]>(initialDashboard.contacts);
   const [tasks, setTasks] = useState<Task[]>(initialDashboard.tasks);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
+  const [leadMessage, setLeadMessage] = useState("");
   const [contactCsv, setContactCsv] = useState("");
   const [importPreview, setImportPreview] = useState<ContactImportPreview | null>(null);
   const [dataMessage, setDataMessage] = useState("");
@@ -67,8 +73,8 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const sessionPromiseRef = useRef<Promise<SessionResponse | null> | null>(null);
 
   const accountsById = useMemo(
-    () => new Map(initialDashboard.accounts.map((account) => [account.id, account])),
-    [initialDashboard.accounts]
+    () => new Map(accounts.map((account) => [account.id, account])),
+    [accounts]
   );
 
   const contactsById = useMemo(
@@ -90,12 +96,22 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
   const filteredAccounts = useMemo(
     () =>
-      initialDashboard.accounts.filter((account) =>
+      accounts.filter((account) =>
         `${account.name} ${account.domain ?? ""} ${account.status}`
           .toLowerCase()
           .includes(normalizedQuery)
       ),
-    [initialDashboard.accounts, normalizedQuery]
+    [accounts, normalizedQuery]
+  );
+
+  const filteredLeads = useMemo(
+    () =>
+      leads.filter((lead) =>
+        `${lead.contactName} ${lead.companyName ?? ""} ${lead.email ?? ""} ${lead.status}`
+          .toLowerCase()
+          .includes(normalizedQuery)
+      ),
+    [leads, normalizedQuery]
   );
 
   const filteredContacts = useMemo(
@@ -116,9 +132,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     0
   );
   const openTasks = tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
-  const activeAccounts = initialDashboard.accounts.filter(
+  const activeAccounts = accounts.filter(
     (account) => account.status !== "inactive"
   );
+  const openLeads = leads.filter((lead) => lead.status !== "converted" && lead.status !== "disqualified");
   const sessionDisplayName = !apiBaseUrl
     ? "Local demo"
     : session?.user.displayName ?? (sessionError ? "Unavailable" : "Connecting");
@@ -267,6 +284,63 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }
 
+  async function convertLeadToOpportunity(lead: Lead) {
+    if (!apiBaseUrl || lead.status === "converted" || lead.status === "disqualified") {
+      return;
+    }
+
+    setConvertingLeadId(lead.id);
+    setLeadMessage("");
+
+    try {
+      const activeSession = await ensureSession();
+      const client = await authenticatedClient();
+      if (!client || !activeSession) {
+        return;
+      }
+
+      const companyName = lead.companyName ?? lead.contactName;
+      const result = await client.convertLead(lead.id, {
+        expectedVersion: lead.version,
+        accountName: companyName,
+        opportunity: {
+          name: `${companyName} opportunity`,
+          stage: "qualification",
+          currency: "USD",
+          ownerUserId: activeSession.user.id,
+          probabilityPct: 20,
+          customFields: {}
+        }
+      });
+
+      setLeads((current) =>
+        current.map((candidate) => (candidate.id === result.lead.id ? result.lead : candidate))
+      );
+      setAccounts((current) =>
+        current.some((account) => account.id === result.account.id)
+          ? current
+          : [result.account, ...current]
+      );
+      setContacts((current) =>
+        current.some((contact) => contact.id === result.contact.id)
+          ? current
+          : [result.contact, ...current]
+      );
+      if (result.opportunity) {
+        setOpportunities((current) =>
+          current.some((opportunity) => opportunity.id === result.opportunity!.id)
+            ? current
+            : [result.opportunity!, ...current]
+        );
+      }
+      setLeadMessage(`Converted ${lead.contactName}`);
+    } catch (error) {
+      setLeadMessage(errorSummary(error));
+    } finally {
+      setConvertingLeadId(null);
+    }
+  }
+
   async function exportRecords(entity: ExportEntity) {
     if (!apiBaseUrl) {
       setDataMessage("API is not configured");
@@ -365,6 +439,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             <CircleDollarSign size={18} /> Pipeline
           </button>
           <button
+            className={viewMode === "leads" ? "active" : ""}
+            onClick={() => setViewMode("leads")}
+          >
+            <UserPlus size={18} /> Leads
+          </button>
+          <button
             className={viewMode === "accounts" ? "active" : ""}
             onClick={() => setViewMode("accounts")}
           >
@@ -396,6 +476,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
         <div className="sidebar-metrics">
           <Metric icon={<CircleDollarSign size={18} />} label="Weighted" value={formatCurrency(pipelineValue)} />
+          <Metric icon={<UserPlus size={18} />} label="Open leads" value={String(openLeads.length)} />
           <Metric icon={<Building2 size={18} />} label="Accounts" value={String(activeAccounts.length)} />
           <Metric icon={<ClipboardCheck size={18} />} label="Open tasks" value={String(openTasks.length)} />
         </div>
@@ -439,6 +520,15 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               />
             ) : null}
 
+            {viewMode === "leads" ? (
+              <LeadsView
+                convertingLeadId={convertingLeadId}
+                leads={filteredLeads}
+                message={leadMessage}
+                onConvert={convertLeadToOpportunity}
+              />
+            ) : null}
+
             {viewMode === "accounts" ? (
               <AccountsView accounts={filteredAccounts} opportunities={opportunities} />
             ) : null}
@@ -478,6 +568,70 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
         </div>
       </section>
     </main>
+  );
+}
+
+function LeadsView({
+  convertingLeadId,
+  leads,
+  message,
+  onConvert
+}: {
+  convertingLeadId: string | null;
+  leads: Lead[];
+  message: string;
+  onConvert: (lead: Lead) => void;
+}) {
+  return (
+    <>
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Leads</p>
+          <h3>Qualification queue</h3>
+        </div>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Lead</th>
+              <th scope="col">Company</th>
+              <th scope="col">Source</th>
+              <th scope="col">Status</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leads.map((lead) => {
+              const canConvert = lead.status !== "converted" && lead.status !== "disqualified";
+              return (
+                <tr key={lead.id}>
+                  <td>
+                    <strong>{lead.contactName}</strong>
+                    <p className="table-subtext">{lead.email ?? ""}</p>
+                  </td>
+                  <td>{lead.companyName ?? ""}</td>
+                  <td>{lead.source}</td>
+                  <td>
+                    <StatusPill value={lead.status} />
+                  </td>
+                  <td>
+                    <button
+                      className="table-action"
+                      disabled={!canConvert || convertingLeadId === lead.id}
+                      onClick={() => onConvert(lead)}
+                    >
+                      <ArrowRight size={16} /> Convert
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {message ? <p className="data-message">{message}</p> : null}
+    </>
   );
 }
 
