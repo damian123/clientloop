@@ -37,7 +37,7 @@ npm run prisma:seed
 
 The local database helper uses Homebrew PostgreSQL, creates the `clientloop` role and database, and reuses the same `DATABASE_URL` from `.env.example`.
 
-The seed script loads the same canonical demo data used by the in-memory repository. The API still uses the in-memory adapter until the Prisma-backed repository task is implemented.
+The seed script loads the same canonical demo data used by the in-memory repository. The API uses Prisma when `DATABASE_URL` is set, and can be forced back to memory with `CRM_REPOSITORY=memory`.
 
 ## Verify
 

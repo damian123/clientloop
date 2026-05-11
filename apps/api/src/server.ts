@@ -2,8 +2,8 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { ZodError } from "zod";
 import { AuthorizationError, DomainRuleError } from "@clientloop/domain";
-import { InMemoryCRMRepository } from "./adapters/in-memory-repository";
 import { registerCrmRoutes } from "./modules/crm-routes";
+import { createRepositoryFromEnv } from "./repository-factory";
 import type { CRMRepository } from "./repository";
 
 export interface BuildServerOptions {
@@ -14,7 +14,7 @@ export async function buildServer(options: BuildServerOptions = {}) {
   const app = Fastify({
     logger: true
   });
-  const repository = options.repository ?? new InMemoryCRMRepository();
+  const repository = options.repository ?? createRepositoryFromEnv();
 
   await app.register(cors, {
     origin: true,
@@ -59,6 +59,13 @@ export async function buildServer(options: BuildServerOptions = {}) {
   });
 
   await registerCrmRoutes(app, repository);
+
+  app.addHook("onClose", async () => {
+    const maybeDisconnect = repository as CRMRepository & {
+      disconnect?: () => Promise<void>;
+    };
+    await maybeDisconnect.disconnect?.();
+  });
 
   return app;
 }
