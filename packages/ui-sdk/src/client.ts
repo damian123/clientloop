@@ -7,6 +7,7 @@ import {
   createTaskSchema,
   createWebhookSubscriptionSchema,
   contactImportRequestSchema,
+  devLoginSchema,
   exportEntitySchema,
   type AppendNoteInput,
   type CompleteTaskInput,
@@ -21,8 +22,10 @@ import {
   type CreateWebhookSubscriptionInput,
   type CreateWebhookSubscriptionResponse,
   type DashboardResponse,
+  type DevLoginInput,
   type ExportEntity,
   type SearchResult,
+  type SessionResponse,
   type UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type {
@@ -40,6 +43,8 @@ export interface CRMClientOptions {
   baseUrl: string;
   tenantId?: string;
   userId?: string;
+  csrfToken?: string;
+  credentials?: RequestCredentials;
   fetchImpl?: typeof fetch;
 }
 
@@ -59,13 +64,42 @@ export class CRMClient {
   private readonly baseUrl: string;
   private readonly tenantId: string | undefined;
   private readonly userId: string | undefined;
+  private readonly credentials: RequestCredentials;
   private readonly fetchImpl: typeof fetch;
+  private csrfToken: string | undefined;
 
   constructor(options: CRMClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.tenantId = options.tenantId;
     this.userId = options.userId;
+    this.csrfToken = options.csrfToken;
+    this.credentials = options.credentials ?? "include";
     this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
+  }
+
+  setCsrfToken(token: string | undefined): void {
+    this.csrfToken = token;
+  }
+
+  async session(): Promise<SessionResponse> {
+    const session = await this.request("/v1/session", { method: "GET" }, apiSchemas.session);
+    this.csrfToken = session.csrfToken;
+    return session;
+  }
+
+  async devLogin(input: DevLoginInput = {}): Promise<SessionResponse> {
+    const session = await this.request(
+      "/v1/session/dev-login",
+      this.jsonRequest("POST", devLoginSchema.parse(input)),
+      apiSchemas.session
+    );
+    this.csrfToken = session.csrfToken;
+    return session;
+  }
+
+  async logout(): Promise<void> {
+    await this.requestText("/v1/session/logout", this.jsonRequest("POST", {}));
+    this.csrfToken = undefined;
   }
 
   async dashboard(): Promise<DashboardResponse> {
@@ -213,6 +247,7 @@ export class CRMClient {
       method,
       headers: {
         "Content-Type": "application/json",
+        ...this.csrfHeaders(),
         ...headers
       },
       body: JSON.stringify(body)
@@ -224,13 +259,13 @@ export class CRMClient {
     init: RequestInit,
     schema: ZodType<T>
   ): Promise<T> {
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, this.fetchInit({
       ...init,
       headers: {
         ...this.authHeaders(),
         ...(init.headers ?? {})
       }
-    });
+    }));
 
     const data = await response.json().catch(() => null);
 
@@ -242,13 +277,13 @@ export class CRMClient {
   }
 
   private async requestText(path: string, init: RequestInit): Promise<string> {
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, this.fetchInit({
       ...init,
       headers: {
         ...this.authHeaders(),
         ...(init.headers ?? {})
       }
-    });
+    }));
     const text = await response.text();
 
     if (!response.ok) {
@@ -270,5 +305,16 @@ export class CRMClient {
     }
 
     return headers;
+  }
+
+  private csrfHeaders(): Record<string, string> {
+    return this.csrfToken ? { "X-CSRF-Token": this.csrfToken } : {};
+  }
+
+  private fetchInit(init: RequestInit): RequestInit {
+    return {
+      ...init,
+      credentials: this.credentials
+    };
   }
 }

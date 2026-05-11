@@ -3,8 +3,10 @@ import Fastify from "fastify";
 import { ZodError } from "zod";
 import { AuthorizationError, DomainRuleError } from "@clientloop/domain";
 import { registerCrmRoutes } from "./modules/crm-routes";
+import { registerSessionRoutes } from "./modules/session-routes";
 import { createRepositoryFromEnv } from "./repository-factory";
 import type { CRMRepository } from "./repository";
+import { isValidCsrfRequest, requiresCsrfProtection } from "./session";
 
 export interface BuildServerOptions {
   repository?: CRMRepository;
@@ -58,6 +60,17 @@ export async function buildServer(options: BuildServerOptions = {}) {
     });
   });
 
+  app.addHook("preHandler", async (request, reply) => {
+    if (!requiresCsrfProtection(request)) {
+      return;
+    }
+
+    if (!isValidCsrfRequest(request)) {
+      return reply.code(403).send({ error: "Invalid CSRF token" });
+    }
+  });
+
+  await registerSessionRoutes(app, repository);
   await registerCrmRoutes(app, repository);
 
   app.addHook("onClose", async () => {

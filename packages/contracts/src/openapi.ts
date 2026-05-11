@@ -18,6 +18,29 @@ export const openApiDocument = {
         summary: "Fetch CRM dashboard aggregate"
       }
     },
+    "/v1/session": {
+      get: {
+        summary: "Read the authenticated CRM session"
+      }
+    },
+    "/v1/session/dev-login": {
+      post: {
+        summary: "Create a local development session cookie",
+        responses: {
+          "201": { description: "Session created" },
+          "404": { description: "Disabled outside local development" }
+        }
+      }
+    },
+    "/v1/session/logout": {
+      post: {
+        summary: "Clear the current session cookie",
+        responses: {
+          "204": { description: "Session cleared" },
+          "403": { description: "CSRF token is missing or invalid" }
+        }
+      }
+    },
     "/v1/accounts": {
       get: { summary: "List accounts" },
       post: { summary: "Create account" }

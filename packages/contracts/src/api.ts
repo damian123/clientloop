@@ -101,6 +101,24 @@ export const createWebhookSubscriptionResponseSchema = webhookSubscriptionSchema
   signingSecret: z.string()
 });
 
+export const devLoginSchema = z.object({
+  tenantId: idSchema.optional(),
+  userId: idSchema.optional()
+});
+
+export const sessionUserSchema = z.object({
+  id: idSchema,
+  email: z.string().email(),
+  displayName: z.string()
+});
+
+export const sessionResponseSchema = z.object({
+  authenticated: z.literal(true),
+  tenantId: idSchema,
+  user: sessionUserSchema,
+  csrfToken: z.string().optional()
+});
+
 export const exportEntitySchema = z.enum(["accounts", "contacts", "opportunities"]);
 
 export const contactImportMappingSchema = z.object({
@@ -186,6 +204,7 @@ export const apiSchemas = {
   activityPage: pageSchema(activitySchema),
   dashboard: dashboardSchema,
   searchResults: z.array(searchResultSchema),
+  session: sessionResponseSchema,
   webhookSubscription: webhookSubscriptionSchema,
   webhookSubscriptions: z.array(webhookSubscriptionSchema),
   createWebhookSubscriptionResponse: createWebhookSubscriptionResponseSchema,
@@ -204,6 +223,8 @@ export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
 export type CreateWebhookSubscriptionInput = z.infer<typeof createWebhookSubscriptionSchema>;
 export type CreateWebhookSubscriptionResponse = z.infer<typeof createWebhookSubscriptionResponseSchema>;
+export type DevLoginInput = z.infer<typeof devLoginSchema>;
+export type SessionResponse = z.infer<typeof sessionResponseSchema>;
 export type ExportEntity = z.infer<typeof exportEntitySchema>;
 export type ContactImportMapping = z.infer<typeof contactImportMappingSchema>;
 export type ContactImportRequest = z.infer<typeof contactImportRequestSchema>;

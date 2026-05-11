@@ -8,6 +8,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - Shared `@clientloop/contracts` package for Zod-validated REST payloads and an OpenAPI 3.1 object.
 - Shared `@clientloop/ui-sdk` package for a typed browser/server API client.
 - `@clientloop/api` Fastify service with CRM modules, auth context, object-level authorization checks, optimistic concurrency, idempotency handling, audit fields, and outbox event emission.
+- BFF-style session cookies for the browser, local dev login, and CSRF checks on cookie-backed mutations.
 - Outbound webhook subscription APIs plus a worker that delivers signed outbox events with retry backoff.
 - CSV exports for accounts, contacts, and opportunities plus contact CSV import preview and commit workflows.
 - `@clientloop/web` Next.js app with a usable CRM cockpit: pipeline, accounts, contacts, tasks, activity timeline, search, and custom-field presentation.
@@ -26,6 +27,18 @@ npm run dev:worker -w @clientloop/api
 The API runs on `http://localhost:4000` by default. The web app runs on `http://localhost:3000`.
 
 The API uses Prisma when `DATABASE_URL` is set, and can still be forced to the in-memory repository with `CRM_REPOSITORY=memory` for fast isolated tests.
+
+## Authentication
+
+For local development, the API keeps the existing `x-tenant-id` and `x-user-id` header fallback enabled. Browser sessions can also use:
+
+```bash
+curl -i -X POST http://localhost:4000/v1/session/dev-login \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+The response sets an HttpOnly `clientloop_session` cookie plus a readable CSRF cookie. Mutating requests authenticated by the session cookie must send the matching `X-CSRF-Token` header. In production, configure `SESSION_SIGNING_SECRET`, set `ALLOW_HEADER_AUTH=false`, and only enable `ALLOW_DEV_LOGIN` for trusted non-production environments.
 
 ## Database
 
