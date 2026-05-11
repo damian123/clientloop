@@ -12,19 +12,30 @@
     "dev:api": "npm run dev -w @clientloop/api",
     "dev:web": "npm run dev -w @clientloop/web",
     "build": "npm run build -w @clientloop/api && npm run build -w @clientloop/web",
+    "db:install": "scripts/db-local.sh install",
+    "db:up": "scripts/db-local.sh start",
+    "db:down": "scripts/db-local.sh stop",
+    "db:setup": "scripts/db-local.sh setup",
+    "db:status": "scripts/db-local.sh status",
+    "db:reset": "prisma migrate reset",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:seed": "prisma db seed"
   },
   "overrides": {
     "next@15.5.18": {
       "postcss": "8.5.14"
     }
   },
+  "dependencies": {
+    "@prisma/client": "^6.7.0"
+  },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "dotenv": "^17.4.2",
     "prisma": "^6.7.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",

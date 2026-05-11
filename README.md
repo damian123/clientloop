@@ -24,6 +24,21 @@ The API runs on `http://localhost:4000` by default. The web app runs on `http://
 
 The API currently uses an in-memory repository so the product is runnable without PostgreSQL. The Prisma schema is present for the durable store implementation path.
 
+## Database
+
+Start local PostgreSQL on this Mac and apply Prisma migrations:
+
+```bash
+cp .env.example .env
+npm run db:setup
+npm run prisma:migrate
+npm run prisma:seed
+```
+
+The local database helper uses Homebrew PostgreSQL, creates the `clientloop` role and database, and reuses the same `DATABASE_URL` from `.env.example`.
+
+The seed script loads the same canonical demo data used by the in-memory repository. The API still uses the in-memory adapter until the Prisma-backed repository task is implemented.
+
 ## Verify
 
 ```bash
