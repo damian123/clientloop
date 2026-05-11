@@ -8,12 +8,15 @@ import {
   createOpportunitySchema,
   createTaskSchema,
   createWebhookSubscriptionSchema,
+  contactImportRequestSchema,
+  exportEntitySchema,
   listQuerySchema,
   searchQuerySchema,
   updateOpportunitySchema
 } from "@clientloop/contracts";
 import { openApiDocument } from "@clientloop/contracts";
 import { principalFromRequest } from "../auth";
+import { exportRecordsCsv, previewContactImport } from "../import-export";
 import type { CRMRepository } from "../repository";
 
 export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRepository) {
@@ -156,6 +159,58 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
       createWebhookSubscriptionSchema.parse(request.body)
     );
     return reply.code(201).send(subscription);
+  });
+
+  app.get("/v1/exports/:entity", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { entity: string };
+    const entity = exportEntitySchema.parse(params.entity);
+    const csv = await exportRecordsCsv({ principal, repository, entity });
+
+    return reply
+      .header("Content-Type", "text/csv; charset=utf-8")
+      .header("Content-Disposition", `attachment; filename="clientloop-${entity}.csv"`)
+      .send(csv);
+  });
+
+  app.post("/v1/imports/contacts/preview", async (request) => {
+    await principalFromRequest(request, repository);
+    return previewContactImport(contactImportRequestSchema.parse(request.body));
+  });
+
+  app.post("/v1/imports/contacts", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const input = contactImportRequestSchema.parse(request.body);
+    const preview = previewContactImport(input);
+
+    if (preview.errors.length > 0) {
+      return reply.code(400).send({
+        importedCount: 0,
+        contacts: [],
+        errors: preview.errors
+      });
+    }
+
+    const contacts = [];
+    for (const row of preview.rows) {
+      contacts.push(
+        await repository.createContact(principal, {
+          firstName: row.firstName,
+          lastName: row.lastName,
+          email: row.email,
+          phone: row.phone,
+          accountId: row.accountId,
+          ownerUserId: row.ownerUserId,
+          customFields: {}
+        })
+      );
+    }
+
+    return reply.code(201).send({
+      importedCount: contacts.length,
+      contacts,
+      errors: []
+    });
   });
 
   app.get("/v1/search", async (request) => {

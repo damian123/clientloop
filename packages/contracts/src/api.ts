@@ -101,6 +101,51 @@ export const createWebhookSubscriptionResponseSchema = webhookSubscriptionSchema
   signingSecret: z.string()
 });
 
+export const exportEntitySchema = z.enum(["accounts", "contacts", "opportunities"]);
+
+export const contactImportMappingSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  accountId: z.string().optional(),
+  ownerUserId: z.string().optional()
+});
+
+export const contactImportRequestSchema = z.object({
+  csv: z.string().min(1),
+  mapping: contactImportMappingSchema.optional()
+});
+
+export const contactImportErrorSchema = z.object({
+  row: z.number().int().positive(),
+  field: z.string(),
+  message: z.string()
+});
+
+export const contactImportRowSchema = z.object({
+  row: z.number().int().positive(),
+  firstName: z.string(),
+  lastName: z.string(),
+  email: z.string().optional(),
+  phone: z.string().optional(),
+  accountId: z.string().optional(),
+  ownerUserId: z.string().optional()
+});
+
+export const contactImportPreviewSchema = z.object({
+  totalRows: z.number().int().nonnegative(),
+  validRows: z.number().int().nonnegative(),
+  errors: z.array(contactImportErrorSchema),
+  rows: z.array(contactImportRowSchema)
+});
+
+export const contactImportResultSchema = z.object({
+  importedCount: z.number().int().nonnegative(),
+  contacts: z.array(contactSchema),
+  errors: z.array(contactImportErrorSchema)
+});
+
 export const searchQuerySchema = z.object({
   q: z.string().min(1),
   limit: z.coerce.number().int().min(1).max(25).default(10)
@@ -143,7 +188,9 @@ export const apiSchemas = {
   searchResults: z.array(searchResultSchema),
   webhookSubscription: webhookSubscriptionSchema,
   webhookSubscriptions: z.array(webhookSubscriptionSchema),
-  createWebhookSubscriptionResponse: createWebhookSubscriptionResponseSchema
+  createWebhookSubscriptionResponse: createWebhookSubscriptionResponseSchema,
+  contactImportPreview: contactImportPreviewSchema,
+  contactImportResult: contactImportResultSchema
 };
 
 export type ListQuery = z.infer<typeof listQuerySchema>;
@@ -157,6 +204,13 @@ export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
 export type CreateWebhookSubscriptionInput = z.infer<typeof createWebhookSubscriptionSchema>;
 export type CreateWebhookSubscriptionResponse = z.infer<typeof createWebhookSubscriptionResponseSchema>;
+export type ExportEntity = z.infer<typeof exportEntitySchema>;
+export type ContactImportMapping = z.infer<typeof contactImportMappingSchema>;
+export type ContactImportRequest = z.infer<typeof contactImportRequestSchema>;
+export type ContactImportError = z.infer<typeof contactImportErrorSchema>;
+export type ContactImportRow = z.infer<typeof contactImportRowSchema>;
+export type ContactImportPreview = z.infer<typeof contactImportPreviewSchema>;
+export type ContactImportResult = z.infer<typeof contactImportResultSchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type DashboardResponse = z.infer<typeof dashboardSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;

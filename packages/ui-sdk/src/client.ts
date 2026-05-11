@@ -6,8 +6,13 @@ import {
   createOpportunitySchema,
   createTaskSchema,
   createWebhookSubscriptionSchema,
+  contactImportRequestSchema,
+  exportEntitySchema,
   type AppendNoteInput,
   type CompleteTaskInput,
+  type ContactImportPreview,
+  type ContactImportRequest,
+  type ContactImportResult,
   type CreateAccountInput,
   type CreateContactInput,
   type CreateLeadInput,
@@ -16,6 +21,7 @@ import {
   type CreateWebhookSubscriptionInput,
   type CreateWebhookSubscriptionResponse,
   type DashboardResponse,
+  type ExportEntity,
   type SearchResult,
   type UpdateOpportunityInput
 } from "@clientloop/contracts";
@@ -59,7 +65,7 @@ export class CRMClient {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
     this.tenantId = options.tenantId;
     this.userId = options.userId;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
   }
 
   async dashboard(): Promise<DashboardResponse> {
@@ -171,6 +177,28 @@ export class CRMClient {
     );
   }
 
+  async exportRecords(entity: ExportEntity): Promise<string> {
+    return this.requestText(`/v1/exports/${exportEntitySchema.parse(entity)}`, {
+      method: "GET"
+    });
+  }
+
+  async previewContactImport(input: ContactImportRequest): Promise<ContactImportPreview> {
+    return this.request(
+      "/v1/imports/contacts/preview",
+      this.jsonRequest("POST", contactImportRequestSchema.parse(input)),
+      apiSchemas.contactImportPreview
+    );
+  }
+
+  async importContacts(input: ContactImportRequest): Promise<ContactImportResult> {
+    return this.request(
+      "/v1/imports/contacts",
+      this.jsonRequest("POST", contactImportRequestSchema.parse(input)),
+      apiSchemas.contactImportResult
+    );
+  }
+
   async search(query: string): Promise<SearchResult[]> {
     const params = new URLSearchParams({ q: query });
     return this.request(`/v1/search?${params.toString()}`, { method: "GET" }, apiSchemas.searchResults);
@@ -211,6 +239,23 @@ export class CRMClient {
     }
 
     return schema.parse(data);
+  }
+
+  private async requestText(path: string, init: RequestInit): Promise<string> {
+    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+      ...init,
+      headers: {
+        ...this.authHeaders(),
+        ...(init.headers ?? {})
+      }
+    });
+    const text = await response.text();
+
+    if (!response.ok) {
+      throw new CRMClientError("CRM API request failed", response.status, text);
+    }
+
+    return text;
   }
 
   private authHeaders(): Record<string, string> {

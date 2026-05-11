@@ -7,15 +7,21 @@ import {
   Check,
   CircleDollarSign,
   ClipboardCheck,
+  Database,
+  Download,
   Filter,
   Plus,
   RefreshCcw,
   Search,
-  UserRound,
-  Users
+  Upload,
+  UserRound
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { DashboardResponse } from "@clientloop/contracts";
+import type {
+  ContactImportPreview,
+  DashboardResponse,
+  ExportEntity
+} from "@clientloop/contracts";
 import type {
   Account,
   Contact,
@@ -23,10 +29,10 @@ import type {
   OpportunityStage,
   Task
 } from "@clientloop/domain";
-import { opportunityStageOrder, seedTenantId, seedUserId } from "@clientloop/domain";
-import { CRMClient } from "@clientloop/ui-sdk";
+import { opportunityStageOrder, seedManagerId, seedTenantId, seedUserId } from "@clientloop/domain";
+import { CRMClient, CRMClientError } from "@clientloop/ui-sdk";
 
-type ViewMode = "pipeline" | "accounts" | "contacts";
+type ViewMode = "pipeline" | "accounts" | "contacts" | "data";
 
 const stageLabels: Record<OpportunityStage, string> = {
   qualification: "Qualification",
@@ -37,6 +43,9 @@ const stageLabels: Record<OpportunityStage, string> = {
   closed_lost: "Closed lost"
 };
 
+const contactCsvPlaceholder = `firstName,lastName,email,phone
+Jordan,Rivera,jordan@example.com,+1 415 555 0199`;
+
 export function CRMWorkspace({ initialDashboard }: { initialDashboard: DashboardResponse }) {
   const [viewMode, setViewMode] = useState<ViewMode>("pipeline");
   const [query, setQuery] = useState("");
@@ -44,8 +53,13 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [opportunities, setOpportunities] = useState<Opportunity[]>(
     initialDashboard.opportunities
   );
+  const [contacts, setContacts] = useState<Contact[]>(initialDashboard.contacts);
   const [tasks, setTasks] = useState<Task[]>(initialDashboard.tasks);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [contactCsv, setContactCsv] = useState("");
+  const [importPreview, setImportPreview] = useState<ContactImportPreview | null>(null);
+  const [dataMessage, setDataMessage] = useState("");
+  const [dataBusy, setDataBusy] = useState(false);
 
   const accountsById = useMemo(
     () => new Map(initialDashboard.accounts.map((account) => [account.id, account])),
@@ -53,8 +67,8 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   );
 
   const contactsById = useMemo(
-    () => new Map(initialDashboard.contacts.map((contact) => [contact.id, contact])),
-    [initialDashboard.contacts]
+    () => new Map(contacts.map((contact) => [contact.id, contact])),
+    [contacts]
   );
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -81,12 +95,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
   const filteredContacts = useMemo(
     () =>
-      initialDashboard.contacts.filter((contact) =>
+      contacts.filter((contact) =>
         `${contact.firstName} ${contact.lastName} ${contact.email ?? ""}`
           .toLowerCase()
           .includes(normalizedQuery)
       ),
-    [initialDashboard.contacts, normalizedQuery]
+    [contacts, normalizedQuery]
   );
 
   const pipelineValue = opportunities.reduce(
@@ -178,6 +192,89 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }
 
+  async function exportRecords(entity: ExportEntity) {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!apiBaseUrl) {
+      setDataMessage("API is not configured");
+      return;
+    }
+
+    setDataBusy(true);
+    setDataMessage("");
+    try {
+      const client = new CRMClient({
+        baseUrl: apiBaseUrl,
+        tenantId: seedTenantId,
+        userId: seedManagerId
+      });
+      const csv = await client.exportRecords(entity);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `clientloop-${entity}.csv`;
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+      setDataMessage(`Exported ${entity}`);
+    } catch (error) {
+      setDataMessage(errorSummary(error));
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  async function previewContactCsv() {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!apiBaseUrl) {
+      setDataMessage("API is not configured");
+      return;
+    }
+
+    setDataBusy(true);
+    setDataMessage("");
+    try {
+      const client = new CRMClient({
+        baseUrl: apiBaseUrl,
+        tenantId: seedTenantId,
+        userId: seedUserId
+      });
+      const preview = await client.previewContactImport({ csv: contactCsv });
+      setImportPreview(preview);
+      setDataMessage(`${preview.validRows} valid rows from ${preview.totalRows}`);
+    } catch (error) {
+      setDataMessage(errorSummary(error));
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  async function importContactCsv() {
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!apiBaseUrl) {
+      setDataMessage("API is not configured");
+      return;
+    }
+
+    setDataBusy(true);
+    setDataMessage("");
+    try {
+      const client = new CRMClient({
+        baseUrl: apiBaseUrl,
+        tenantId: seedTenantId,
+        userId: seedUserId
+      });
+      const result = await client.importContacts({ csv: contactCsv });
+      setContacts((current) => [...result.contacts, ...current]);
+      setImportPreview(null);
+      setContactCsv("");
+      setDataMessage(`Imported ${result.importedCount} contacts`);
+    } catch (error) {
+      setDataMessage(errorSummary(error));
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Workspace navigation">
@@ -209,6 +306,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             onClick={() => setViewMode("contacts")}
           >
             <UserRound size={18} /> Contacts
+          </button>
+          <button
+            className={viewMode === "data" ? "active" : ""}
+            onClick={() => setViewMode("data")}
+          >
+            <Database size={18} /> Data
           </button>
         </nav>
 
@@ -263,6 +366,19 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
             {viewMode === "contacts" ? (
               <ContactsView contacts={filteredContacts} accountsById={accountsById} />
+            ) : null}
+
+            {viewMode === "data" ? (
+              <DataView
+                contactCsv={contactCsv}
+                dataBusy={dataBusy}
+                dataMessage={dataMessage}
+                importPreview={importPreview}
+                onContactCsvChange={setContactCsv}
+                onExport={exportRecords}
+                onImport={importContactCsv}
+                onPreview={previewContactCsv}
+              />
             ) : null}
           </section>
 
@@ -464,6 +580,108 @@ function ContactsView({
   );
 }
 
+function DataView({
+  contactCsv,
+  dataBusy,
+  dataMessage,
+  importPreview,
+  onContactCsvChange,
+  onExport,
+  onImport,
+  onPreview
+}: {
+  contactCsv: string;
+  dataBusy: boolean;
+  dataMessage: string;
+  importPreview: ContactImportPreview | null;
+  onContactCsvChange: (value: string) => void;
+  onExport: (entity: ExportEntity) => void;
+  onImport: () => void;
+  onPreview: () => void;
+}) {
+  return (
+    <>
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Data</p>
+          <h3>Import and export</h3>
+        </div>
+      </div>
+
+      <div className="data-workspace">
+        <section className="data-section" aria-label="Exports">
+          <div>
+            <p className="eyebrow">Exports</p>
+            <h4>Core records</h4>
+          </div>
+          <div className="data-actions">
+            <button disabled={dataBusy} onClick={() => onExport("accounts")}>
+              <Download size={16} /> Accounts
+            </button>
+            <button disabled={dataBusy} onClick={() => onExport("contacts")}>
+              <Download size={16} /> Contacts
+            </button>
+            <button disabled={dataBusy} onClick={() => onExport("opportunities")}>
+              <Download size={16} /> Opportunities
+            </button>
+          </div>
+        </section>
+
+        <section className="data-section" aria-label="Contact import">
+          <div>
+            <p className="eyebrow">Import</p>
+            <h4>Contact CSV</h4>
+          </div>
+          <label className="csv-editor">
+            <span className="sr-only">Contact CSV</span>
+            <textarea
+              value={contactCsv}
+              onChange={(event) => onContactCsvChange(event.target.value)}
+              placeholder={contactCsvPlaceholder}
+              spellCheck={false}
+            />
+          </label>
+          <div className="data-actions">
+            <button disabled={dataBusy || contactCsv.trim().length === 0} onClick={onPreview}>
+              <Search size={16} /> Preview
+            </button>
+            <button
+              className="primary-action"
+              disabled={dataBusy || !importPreview || importPreview.errors.length > 0}
+              onClick={onImport}
+            >
+              <Upload size={16} /> Import
+            </button>
+          </div>
+
+          {importPreview ? (
+            <div className="import-summary" aria-label="Import preview">
+              <strong>{importPreview.validRows}</strong>
+              <span>valid</span>
+              <strong>{importPreview.errors.length}</strong>
+              <span>errors</span>
+              <strong>{importPreview.totalRows}</strong>
+              <span>rows</span>
+            </div>
+          ) : null}
+
+          {importPreview?.errors.length ? (
+            <ul className="import-errors">
+              {importPreview.errors.slice(0, 4).map((error) => (
+                <li key={`${error.row}-${error.field}-${error.message}`}>
+                  Row {error.row}: {error.field} - {error.message}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+
+        {dataMessage ? <p className="data-message">{dataMessage}</p> : null}
+      </div>
+    </>
+  );
+}
+
 function TaskQueue({
   tasks,
   opportunities,
@@ -600,6 +818,8 @@ function viewModeTitle(viewMode: ViewMode) {
       return "Accounts";
     case "contacts":
       return "Contacts";
+    case "data":
+      return "Data";
   }
 }
 
@@ -620,4 +840,12 @@ function formatDate(value: string | null | undefined) {
     month: "short",
     day: "numeric"
   }).format(new Date(value));
+}
+
+function errorSummary(error: unknown) {
+  if (error instanceof CRMClientError) {
+    return `Request failed (${error.status})`;
+  }
+
+  return error instanceof Error ? error.message : "Action failed";
 }

@@ -9,6 +9,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - Shared `@clientloop/ui-sdk` package for a typed browser/server API client.
 - `@clientloop/api` Fastify service with CRM modules, auth context, object-level authorization checks, optimistic concurrency, idempotency handling, audit fields, and outbox event emission.
 - Outbound webhook subscription APIs plus a worker that delivers signed outbox events with retry backoff.
+- CSV exports for accounts, contacts, and opportunities plus contact CSV import preview and commit workflows.
 - `@clientloop/web` Next.js app with a usable CRM cockpit: pipeline, accounts, contacts, tasks, activity timeline, search, and custom-field presentation.
 - Prisma PostgreSQL schema covering tenants, users, roles, permissions, CRM records, custom fields, audit logs, outbox events, and webhook subscriptions.
 - Markdown task tracking under `docs/tasks`.
@@ -53,6 +54,21 @@ curl -X POST http://localhost:4000/v1/webhooks/subscriptions \
 ```
 
 The create response includes `signingSecret` once. Worker deliveries sign the JSON payload with `X-ClientLoop-Signature` and include event metadata headers.
+
+## Import and export
+
+The API exposes CSV workflows for core records:
+
+```bash
+curl -H 'x-user-id: 00000000-0000-4000-8000-000000000102' \
+  http://localhost:4000/v1/exports/contacts
+
+curl -X POST http://localhost:4000/v1/imports/contacts/preview \
+  -H 'Content-Type: application/json' \
+  -d '{"csv":"firstName,lastName,email\nTaylor,Nguyen,taylor@example.com"}'
+```
+
+The web app includes a `Data` view for CSV export and contact import preview.
 
 ## Verify
 

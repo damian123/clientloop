@@ -82,6 +82,37 @@ export const openApiDocument = {
         }
       }
     },
+    "/v1/exports/{entity}": {
+      get: {
+        summary: "Export CRM records as CSV",
+        parameters: [
+          {
+            name: "entity",
+            in: "path",
+            schema: {
+              type: "string",
+              enum: ["accounts", "contacts", "opportunities"]
+            }
+          }
+        ],
+        responses: {
+          "200": { description: "CSV export" },
+          "403": { description: "Export is not permitted" }
+        }
+      }
+    },
+    "/v1/imports/contacts/preview": {
+      post: { summary: "Preview contact CSV import" }
+    },
+    "/v1/imports/contacts": {
+      post: {
+        summary: "Import contacts from CSV",
+        responses: {
+          "201": { description: "Imported" },
+          "400": { description: "CSV validation failed" }
+        }
+      }
+    },
     "/v1/search": {
       get: { summary: "Search CRM records" }
     }
