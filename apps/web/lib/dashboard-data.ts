@@ -1,5 +1,5 @@
 import type { DashboardResponse } from "@clientloop/contracts";
-import { createSeedData, seedTenantId, seedUserId } from "@clientloop/domain";
+import { createSeedData, seedManagerId, seedTenantId } from "@clientloop/domain";
 import { CRMClient } from "@clientloop/ui-sdk";
 
 export async function loadDashboardData(): Promise<DashboardResponse> {
@@ -10,7 +10,7 @@ export async function loadDashboardData(): Promise<DashboardResponse> {
       const client = new CRMClient({
         baseUrl,
         tenantId: seedTenantId,
-        userId: seedUserId
+        userId: seedManagerId
       });
       return await client.dashboard();
     } catch {

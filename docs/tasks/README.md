@@ -8,3 +8,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0004-webhook-outbox-delivery.md](./0004-webhook-outbox-delivery.md)
 - [0005-csv-import-export.md](./0005-csv-import-export.md)
 - [0006-session-auth-csrf.md](./0006-session-auth-csrf.md)
+- [0007-frontend-session-wiring.md](./0007-frontend-session-wiring.md)

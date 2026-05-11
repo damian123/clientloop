@@ -41,11 +41,11 @@ import type { ZodType } from "zod";
 
 export interface CRMClientOptions {
   baseUrl: string;
-  tenantId?: string;
-  userId?: string;
-  csrfToken?: string;
-  credentials?: RequestCredentials;
-  fetchImpl?: typeof fetch;
+  tenantId?: string | undefined;
+  userId?: string | undefined;
+  csrfToken?: string | undefined;
+  credentials?: RequestCredentials | undefined;
+  fetchImpl?: typeof fetch | undefined;
 }
 
 export class CRMClientError extends Error {

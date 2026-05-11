@@ -16,11 +16,12 @@ import {
   Upload,
   UserRound
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ContactImportPreview,
   DashboardResponse,
-  ExportEntity
+  ExportEntity,
+  SessionResponse
 } from "@clientloop/contracts";
 import type {
   Account,
@@ -29,7 +30,7 @@ import type {
   OpportunityStage,
   Task
 } from "@clientloop/domain";
-import { opportunityStageOrder, seedManagerId, seedTenantId, seedUserId } from "@clientloop/domain";
+import { opportunityStageOrder, seedManagerId, seedTenantId } from "@clientloop/domain";
 import { CRMClient, CRMClientError } from "@clientloop/ui-sdk";
 
 type ViewMode = "pipeline" | "accounts" | "contacts" | "data";
@@ -47,6 +48,7 @@ const contactCsvPlaceholder = `firstName,lastName,email,phone
 Jordan,Rivera,jordan@example.com,+1 415 555 0199`;
 
 export function CRMWorkspace({ initialDashboard }: { initialDashboard: DashboardResponse }) {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   const [viewMode, setViewMode] = useState<ViewMode>("pipeline");
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<OpportunityStage | "all">("all");
@@ -60,6 +62,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [importPreview, setImportPreview] = useState<ContactImportPreview | null>(null);
   const [dataMessage, setDataMessage] = useState("");
   const [dataBusy, setDataBusy] = useState(false);
+  const [session, setSession] = useState<SessionResponse | null>(null);
+  const [sessionError, setSessionError] = useState("");
+  const sessionPromiseRef = useRef<Promise<SessionResponse | null> | null>(null);
 
   const accountsById = useMemo(
     () => new Map(initialDashboard.accounts.map((account) => [account.id, account])),
@@ -114,6 +119,80 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const activeAccounts = initialDashboard.accounts.filter(
     (account) => account.status !== "inactive"
   );
+  const sessionDisplayName = !apiBaseUrl
+    ? "Local demo"
+    : session?.user.displayName ?? (sessionError ? "Unavailable" : "Connecting");
+  const sessionStateLabel = !apiBaseUrl ? "Seed data" : sessionError ? "Offline" : "Signed in";
+
+  const ensureSession = useCallback(async (): Promise<SessionResponse | null> => {
+    if (!apiBaseUrl) {
+      return null;
+    }
+
+    if (
+      session?.csrfToken &&
+      (process.env.NODE_ENV === "production" || session.user.id === seedManagerId)
+    ) {
+      return session;
+    }
+
+    if (!sessionPromiseRef.current) {
+      const client = new CRMClient({ baseUrl: apiBaseUrl });
+      sessionPromiseRef.current = (async () => {
+        const existingSession = await client.session().catch(() => null);
+        if (
+          existingSession?.csrfToken &&
+          (process.env.NODE_ENV === "production" || existingSession.user.id === seedManagerId)
+        ) {
+          return existingSession;
+        }
+
+        try {
+          return await client.devLogin({ tenantId: seedTenantId, userId: seedManagerId });
+        } catch (error) {
+          if (existingSession?.csrfToken) {
+            return existingSession;
+          }
+          throw error;
+        }
+      })()
+        .then((nextSession) => {
+          setSession(nextSession);
+          setSessionError("");
+          return nextSession;
+        })
+        .catch((error) => {
+          setSession(null);
+          setSessionError(errorSummary(error));
+          return null;
+        })
+        .finally(() => {
+          sessionPromiseRef.current = null;
+        });
+    }
+
+    return sessionPromiseRef.current;
+  }, [apiBaseUrl, session]);
+
+  const authenticatedClient = useCallback(async (): Promise<CRMClient | null> => {
+    if (!apiBaseUrl) {
+      return null;
+    }
+
+    const activeSession = await ensureSession();
+    if (!activeSession?.csrfToken) {
+      throw new Error("Session is not ready");
+    }
+
+    return new CRMClient({
+      baseUrl: apiBaseUrl,
+      csrfToken: activeSession.csrfToken
+    });
+  }, [apiBaseUrl, ensureSession]);
+
+  useEffect(() => {
+    void ensureSession();
+  }, [ensureSession]);
 
   async function advanceOpportunity(opportunity: Opportunity) {
     const currentIndex = opportunityStageOrder.indexOf(opportunity.stage);
@@ -135,14 +214,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     );
     setSyncingId(opportunity.id);
 
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     if (apiBaseUrl) {
       try {
-        const client = new CRMClient({
-          baseUrl: apiBaseUrl,
-          tenantId: seedTenantId,
-          userId: seedUserId
-        });
+        const client = await authenticatedClient();
+        if (!client) {
+          return;
+        }
         const saved = await client.updateOpportunity(opportunity.id, {
           expectedVersion: opportunity.version,
           stage: nextStage
@@ -172,14 +249,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       current.map((candidate) => (candidate.id === task.id ? optimistic : candidate))
     );
 
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     if (apiBaseUrl) {
       try {
-        const client = new CRMClient({
-          baseUrl: apiBaseUrl,
-          tenantId: seedTenantId,
-          userId: seedUserId
-        });
+        const client = await authenticatedClient();
+        if (!client) {
+          return;
+        }
         const saved = await client.completeTask(task.id, { expectedVersion: task.version });
         setTasks((current) =>
           current.map((candidate) => (candidate.id === saved.id ? saved : candidate))
@@ -193,7 +268,6 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   async function exportRecords(entity: ExportEntity) {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     if (!apiBaseUrl) {
       setDataMessage("API is not configured");
       return;
@@ -202,11 +276,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     setDataBusy(true);
     setDataMessage("");
     try {
-      const client = new CRMClient({
-        baseUrl: apiBaseUrl,
-        tenantId: seedTenantId,
-        userId: seedManagerId
-      });
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
       const csv = await client.exportRecords(entity);
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = window.URL.createObjectURL(blob);
@@ -224,7 +297,6 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   async function previewContactCsv() {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     if (!apiBaseUrl) {
       setDataMessage("API is not configured");
       return;
@@ -233,11 +305,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     setDataBusy(true);
     setDataMessage("");
     try {
-      const client = new CRMClient({
-        baseUrl: apiBaseUrl,
-        tenantId: seedTenantId,
-        userId: seedUserId
-      });
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
       const preview = await client.previewContactImport({ csv: contactCsv });
       setImportPreview(preview);
       setDataMessage(`${preview.validRows} valid rows from ${preview.totalRows}`);
@@ -249,7 +320,6 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   async function importContactCsv() {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
     if (!apiBaseUrl) {
       setDataMessage("API is not configured");
       return;
@@ -258,11 +328,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     setDataBusy(true);
     setDataMessage("");
     try {
-      const client = new CRMClient({
-        baseUrl: apiBaseUrl,
-        tenantId: seedTenantId,
-        userId: seedUserId
-      });
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
       const result = await client.importContacts({ csv: contactCsv });
       setContacts((current) => [...result.contacts, ...current]);
       setImportPreview(null);
@@ -314,6 +383,16 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             <Database size={18} /> Data
           </button>
         </nav>
+
+        <div className="session-card" aria-label="Current user">
+          <span>
+            <UserRound size={18} />
+          </span>
+          <div>
+            <p className="eyebrow">{sessionStateLabel}</p>
+            <strong>{sessionDisplayName}</strong>
+          </div>
+        </div>
 
         <div className="sidebar-metrics">
           <Metric icon={<CircleDollarSign size={18} />} label="Weighted" value={formatCurrency(pipelineValue)} />

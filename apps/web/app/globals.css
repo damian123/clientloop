@@ -85,6 +85,7 @@ button:disabled {
 .brand-block p,
 .topbar h2,
 .panel-heading h3,
+.session-card p,
 .metric p,
 .record-card h4,
 .task-item h4,
@@ -131,6 +132,35 @@ button:disabled {
 .nav-list button:hover {
   background: #203039;
   color: #ffffff;
+}
+
+.session-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.session-card > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: rgba(220, 239, 233, 0.1);
+  color: #bce0d4;
+}
+
+.session-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #ffffff;
+  font-size: 14px;
 }
 
 .sidebar-metrics {

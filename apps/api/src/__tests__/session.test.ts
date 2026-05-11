@@ -99,6 +99,28 @@ describe("CRM API sessions", () => {
 
     await app.close();
   });
+
+  it("rejects unsafe requests with invalid session cookies", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/contacts",
+      headers: {
+        cookie: "clientloop_session=invalid"
+      },
+      payload: {
+        firstName: "Invalid",
+        lastName: "Cookie",
+        email: "invalid.cookie@example.com",
+        customFields: {}
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
+
+    await app.close();
+  });
 });
 
 function cookieHeader(response: {

@@ -11,7 +11,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - BFF-style session cookies for the browser, local dev login, and CSRF checks on cookie-backed mutations.
 - Outbound webhook subscription APIs plus a worker that delivers signed outbox events with retry backoff.
 - CSV exports for accounts, contacts, and opportunities plus contact CSV import preview and commit workflows.
-- `@clientloop/web` Next.js app with a usable CRM cockpit: pipeline, accounts, contacts, tasks, activity timeline, search, and custom-field presentation.
+- `@clientloop/web` Next.js app with a usable session-backed CRM cockpit: pipeline, accounts, contacts, tasks, activity timeline, search, and custom-field presentation.
 - Prisma PostgreSQL schema covering tenants, users, roles, permissions, CRM records, custom fields, audit logs, outbox events, and webhook subscriptions.
 - Markdown task tracking under `docs/tasks`.
 

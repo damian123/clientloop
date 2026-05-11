@@ -78,7 +78,7 @@ export function requiresCsrfProtection(request: FastifyRequest): boolean {
   const token = readSessionToken(request);
   return (
     ["DELETE", "PATCH", "POST", "PUT"].includes(request.method.toUpperCase()) &&
-    Boolean(token && verifySessionToken(token))
+    Boolean(token)
   );
 }
 
