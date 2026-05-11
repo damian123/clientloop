@@ -9,7 +9,8 @@ import type {
   Opportunity,
   Page,
   Task,
-  TenantId
+  TenantId,
+  WebhookSubscription
 } from "@clientloop/domain";
 import type {
   AppendNoteInput,
@@ -18,6 +19,8 @@ import type {
   CreateLeadInput,
   CreateOpportunityInput,
   CreateTaskInput,
+  CreateWebhookSubscriptionInput,
+  CreateWebhookSubscriptionResponse,
   DashboardResponse,
   ListQuery,
   SearchQuery,
@@ -25,6 +28,10 @@ import type {
   UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type { OutboxEvent } from "@clientloop/domain";
+
+export interface WebhookDeliveryTarget extends WebhookSubscription {
+  signingSecret: string;
+}
 
 export interface CRMRepository {
   getPrincipal(tenantId: TenantId, userId: string): Promise<AccessPrincipal>;
@@ -57,6 +64,16 @@ export interface CRMRepository {
   listActivities(tenantId: TenantId, query: ListQuery): Promise<Page<Activity>>;
   listCustomFieldDefinitions(tenantId: TenantId): Promise<CustomFieldDefinition[]>;
   search(tenantId: TenantId, query: SearchQuery): Promise<SearchResult[]>;
+  listWebhookSubscriptions(tenantId: TenantId): Promise<WebhookSubscription[]>;
+  createWebhookSubscription(
+    principal: AccessPrincipal,
+    input: CreateWebhookSubscriptionInput
+  ): Promise<CreateWebhookSubscriptionResponse>;
+  activeWebhookSubscriptions(
+    tenantId: TenantId,
+    eventType: OutboxEvent["type"]
+  ): Promise<WebhookDeliveryTarget[]>;
   pendingOutbox(limit: number): Promise<OutboxEvent[]>;
   markOutboxDelivered(id: string): Promise<void>;
+  markOutboxFailed(id: string, error: string, nextAttemptAt: string): Promise<void>;
 }

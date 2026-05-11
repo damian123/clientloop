@@ -27,7 +27,8 @@ const allResources: Permission["resource"][] = [
   "task",
   "note",
   "custom_field",
-  "user"
+  "user",
+  "admin"
 ];
 
 const managerPermissions: Permission[] = allResources.flatMap((resource, index) => [

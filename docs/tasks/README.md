@@ -5,3 +5,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0001-initial-crm-platform.md](./0001-initial-crm-platform.md)
 - [0002-database-bootstrap.md](./0002-database-bootstrap.md)
 - [0003-prisma-repository.md](./0003-prisma-repository.md)
+- [0004-webhook-outbox-delivery.md](./0004-webhook-outbox-delivery.md)

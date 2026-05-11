@@ -193,6 +193,19 @@ export interface User extends AuditFields {
   teamIds: EntityId[];
 }
 
+export interface WebhookSubscription {
+  id: EntityId;
+  tenantId: TenantId;
+  url: string;
+  eventTypes: string[];
+  isActive: boolean;
+  secretFingerprint: string;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+  lastErrorAt?: ISODate | null | undefined;
+  lastError?: string | null | undefined;
+}
+
 export interface PageInfo {
   endCursor?: string | undefined;
   hasNextPage: boolean;

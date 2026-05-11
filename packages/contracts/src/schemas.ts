@@ -30,6 +30,26 @@ export const opportunityStageSchema = z.enum([
   "closed_lost"
 ]);
 
+export const domainEventTypeSchema = z.enum([
+  "account.created",
+  "account.updated",
+  "contact.created",
+  "contact.updated",
+  "lead.created",
+  "lead.converted",
+  "opportunity.created",
+  "opportunity.stage_changed",
+  "task.created",
+  "task.completed",
+  "note.appended",
+  "activity.logged"
+]);
+
+export const webhookEventTypeSchema = z.union([
+  domainEventTypeSchema,
+  z.literal("*")
+]);
+
 export const customFieldPrimitiveSchema = z.union([
   z.string(),
   z.number(),
@@ -168,4 +188,17 @@ export const customFieldDefinitionSchema = z.object({
   isIndexed: z.boolean(),
   schema: z.record(z.unknown()).optional(),
   ...auditFields
+});
+
+export const webhookSubscriptionSchema = z.object({
+  id: idSchema,
+  tenantId: idSchema,
+  url: z.string().url(),
+  eventTypes: z.array(webhookEventTypeSchema),
+  isActive: z.boolean(),
+  secretFingerprint: z.string(),
+  createdAt: isoDateSchema,
+  updatedAt: isoDateSchema,
+  lastErrorAt: isoDateSchema.nullish(),
+  lastError: z.string().nullish()
 });

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   assertCan,
   changeOpportunityStage,
@@ -20,7 +20,8 @@ import {
   type Role,
   type Task,
   type TenantId,
-  type User
+  type User,
+  type WebhookSubscription
 } from "@clientloop/domain";
 import type {
   AppendNoteInput,
@@ -29,13 +30,15 @@ import type {
   CreateLeadInput,
   CreateOpportunityInput,
   CreateTaskInput,
+  CreateWebhookSubscriptionInput,
+  CreateWebhookSubscriptionResponse,
   DashboardResponse,
   ListQuery,
   SearchQuery,
   SearchResult,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
-import type { CRMRepository } from "../repository";
+import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
 
 interface Store {
   users: User[];
@@ -53,6 +56,7 @@ interface Store {
 export class InMemoryCRMRepository implements CRMRepository {
   private readonly store: Store;
   private readonly outbox: OutboxEvent[] = [];
+  private readonly webhookSubscriptions: WebhookDeliveryTarget[] = [];
   private readonly idempotencyResults = new Map<string, Opportunity>();
 
   constructor(seed: Store = createSeedData()) {
@@ -412,8 +416,61 @@ export class InMemoryCRMRepository implements CRMRepository {
       .slice(0, query.limit);
   }
 
+  async listWebhookSubscriptions(tenantId: TenantId): Promise<WebhookSubscription[]> {
+    return this.webhookSubscriptions
+      .filter((subscription) => subscription.tenantId === tenantId)
+      .map((subscription) => this.toPublicWebhookSubscription(subscription));
+  }
+
+  async createWebhookSubscription(
+    principal: AccessPrincipal,
+    input: CreateWebhookSubscriptionInput
+  ): Promise<CreateWebhookSubscriptionResponse> {
+    assertCan(principal, "admin", "manage", { tenantId: principal.tenantId });
+    const now = new Date().toISOString();
+    const signingSecret = input.signingSecret ?? randomBytes(32).toString("hex");
+    const subscription: WebhookDeliveryTarget = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      url: input.url,
+      eventTypes: input.eventTypes,
+      isActive: true,
+      secretFingerprint: this.hashSecret(signingSecret),
+      signingSecret,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    this.webhookSubscriptions.unshift(subscription);
+
+    return {
+      ...this.toPublicWebhookSubscription(subscription),
+      eventTypes: input.eventTypes,
+      signingSecret
+    };
+  }
+
+  async activeWebhookSubscriptions(
+    tenantId: TenantId,
+    eventType: OutboxEvent["type"]
+  ): Promise<WebhookDeliveryTarget[]> {
+    return this.webhookSubscriptions.filter(
+      (subscription) =>
+        subscription.tenantId === tenantId &&
+        subscription.isActive &&
+        (subscription.eventTypes.includes(eventType) || subscription.eventTypes.includes("*"))
+    );
+  }
+
   async pendingOutbox(limit: number): Promise<OutboxEvent[]> {
-    return this.outbox.filter((event) => event.status === "pending").slice(0, limit);
+    const now = Date.now();
+    return this.outbox
+      .filter(
+        (event) =>
+          (event.status === "pending" || event.status === "failed") &&
+          (!event.nextAttemptAt || new Date(event.nextAttemptAt).getTime() <= now)
+      )
+      .slice(0, limit);
   }
 
   async markOutboxDelivered(id: string): Promise<void> {
@@ -422,6 +479,19 @@ export class InMemoryCRMRepository implements CRMRepository {
     if (event) {
       event.status = "delivered";
       event.deliveredAt = new Date().toISOString();
+      event.lastError = null;
+      event.nextAttemptAt = null;
+    }
+  }
+
+  async markOutboxFailed(id: string, error: string, nextAttemptAt: string): Promise<void> {
+    const event = this.outbox.find((candidate) => candidate.id === id);
+
+    if (event) {
+      event.status = "failed";
+      event.attempts += 1;
+      event.lastError = error;
+      event.nextAttemptAt = nextAttemptAt;
     }
   }
 
@@ -465,6 +535,27 @@ export class InMemoryCRMRepository implements CRMRepository {
     }
 
     return record.version;
+  }
+
+  private hashSecret(secret: string): string {
+    return createHash("sha256").update(secret).digest("hex");
+  }
+
+  private toPublicWebhookSubscription(
+    subscription: WebhookDeliveryTarget
+  ): WebhookSubscription {
+    return {
+      id: subscription.id,
+      tenantId: subscription.tenantId,
+      url: subscription.url,
+      eventTypes: subscription.eventTypes,
+      isActive: subscription.isActive,
+      secretFingerprint: subscription.secretFingerprint,
+      createdAt: subscription.createdAt,
+      updatedAt: subscription.updatedAt,
+      lastErrorAt: subscription.lastErrorAt,
+      lastError: subscription.lastError
+    };
   }
 
   private enqueueEvent(

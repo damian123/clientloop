@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seedOpportunities } from "@clientloop/domain";
+import { seedManagerId, seedOpportunities } from "@clientloop/domain";
 import { InMemoryCRMRepository } from "../adapters/in-memory-repository";
 import { buildServer } from "../server";
 
@@ -54,6 +54,40 @@ describe("CRM API", () => {
     });
 
     expect(response.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("creates and lists webhook subscriptions without exposing the secret again", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/v1/webhooks/subscriptions",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        url: "https://example.com/clientloop-webhook",
+        eventTypes: ["opportunity.stage_changed"],
+        signingSecret: "test-secret-with-enough-length"
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.json().signingSecret).toBe("test-secret-with-enough-length");
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/v1/webhooks/subscriptions",
+      headers: {
+        "x-user-id": seedManagerId
+      }
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toHaveLength(1);
+    expect(listResponse.json()[0].signingSecret).toBeUndefined();
+    expect(listResponse.json()[0].secretFingerprint).toBeTruthy();
     await app.close();
   });
 });

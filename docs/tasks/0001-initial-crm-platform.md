@@ -22,9 +22,9 @@ Completed for initial scaffold.
 
 ## Notes
 
-- The first implementation uses an in-memory repository for immediate local execution.
-- PostgreSQL durability is represented by the Prisma schema and can be wired behind the repository interface next.
-- Future work should add real OAuth/OIDC BFF session handling, database-backed outbox delivery, GraphQL read layer, and import/export jobs.
+- The implementation keeps the in-memory repository available for tests and fallback.
+- PostgreSQL durability is now wired through the Prisma repository when `DATABASE_URL` is set.
+- Future work should add real OAuth/OIDC BFF session handling, GraphQL read layer, and import/export jobs.
 - The CI workflow is stored as `docs/ci/github-actions-ci.yml` until GitHub push credentials include the `workflow` scope.
 
 ## Verification
@@ -37,9 +37,9 @@ Completed for initial scaffold.
 
 ## Follow-up Tasks
 
-- [ ] Replace the in-memory repository with a Prisma-backed repository using expand-and-contract migration discipline.
+- [x] Replace the in-memory repository with a Prisma-backed repository using expand-and-contract migration discipline.
 - [ ] Add OAuth/OIDC BFF session handling with secure cookies and CSRF protection.
-- [ ] Persist outbox events and implement webhook delivery retries with signed payloads.
+- [x] Persist outbox events and implement webhook delivery retries with signed payloads.
 - [ ] Add import/export jobs and CSV field mapping.
 - [ ] Add Playwright end-to-end coverage for opportunity stage movement and task completion.
 - [ ] Add optional GraphQL read layer for dense record detail screens.

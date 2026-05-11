@@ -1,17 +1,23 @@
-import { InMemoryCRMRepository } from "./adapters/in-memory-repository";
+import { createRepositoryFromEnv } from "./repository-factory";
+import { deliverPendingWebhooks } from "./webhook-delivery";
 
-const repository = new InMemoryCRMRepository();
+const repository = createRepositoryFromEnv();
 
 async function runOnce() {
-  const events = await repository.pendingOutbox(25);
-
-  for (const event of events) {
-    console.log(`delivering outbox event ${event.id} ${event.type}`);
-    await repository.markOutboxDelivered(event.id);
-  }
-
-  return events.length;
+  return deliverPendingWebhooks(repository, {
+    limit: Number(process.env.WEBHOOK_DELIVERY_BATCH_SIZE ?? 25),
+    logger: console
+  });
 }
 
-const delivered = await runOnce();
-console.log(`worker completed; delivered=${delivered}`);
+try {
+  const result = await runOnce();
+  console.log(
+    `worker completed; scanned=${result.scanned} delivered=${result.delivered} skipped=${result.skipped} failed=${result.failed}`
+  );
+} finally {
+  const maybeDisconnect = repository as typeof repository & {
+    disconnect?: () => Promise<void>;
+  };
+  await maybeDisconnect.disconnect?.();
+}

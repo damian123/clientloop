@@ -71,6 +71,17 @@ export const openApiDocument = {
     "/v1/notes": {
       post: { summary: "Append note" }
     },
+    "/v1/webhooks/subscriptions": {
+      get: { summary: "List outbound webhook subscriptions" },
+      post: {
+        summary: "Create outbound webhook subscription",
+        responses: {
+          "201": {
+            description: "Created; response includes the signing secret once"
+          }
+        }
+      }
+    },
     "/v1/search": {
       get: { summary: "Search CRM records" }
     }

@@ -12,7 +12,9 @@ import {
   opportunitySchema,
   opportunityStageSchema,
   pageSchema,
-  taskSchema
+  taskSchema,
+  webhookEventTypeSchema,
+  webhookSubscriptionSchema
 } from "./schemas";
 
 export const listQuerySchema = z.object({
@@ -89,6 +91,16 @@ export const appendNoteSchema = z.object({
   bodyFormat: z.enum(["markdown", "html", "plain_text"]).default("plain_text")
 });
 
+export const createWebhookSubscriptionSchema = z.object({
+  url: z.string().url(),
+  eventTypes: z.array(webhookEventTypeSchema).min(1),
+  signingSecret: z.string().min(16).optional()
+});
+
+export const createWebhookSubscriptionResponseSchema = webhookSubscriptionSchema.extend({
+  signingSecret: z.string()
+});
+
 export const searchQuerySchema = z.object({
   q: z.string().min(1),
   limit: z.coerce.number().int().min(1).max(25).default(10)
@@ -128,7 +140,10 @@ export const apiSchemas = {
   taskPage: pageSchema(taskSchema),
   activityPage: pageSchema(activitySchema),
   dashboard: dashboardSchema,
-  searchResults: z.array(searchResultSchema)
+  searchResults: z.array(searchResultSchema),
+  webhookSubscription: webhookSubscriptionSchema,
+  webhookSubscriptions: z.array(webhookSubscriptionSchema),
+  createWebhookSubscriptionResponse: createWebhookSubscriptionResponseSchema
 };
 
 export type ListQuery = z.infer<typeof listQuerySchema>;
@@ -140,6 +155,8 @@ export type UpdateOpportunityInput = z.infer<typeof updateOpportunitySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
+export type CreateWebhookSubscriptionInput = z.infer<typeof createWebhookSubscriptionSchema>;
+export type CreateWebhookSubscriptionResponse = z.infer<typeof createWebhookSubscriptionResponseSchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type DashboardResponse = z.infer<typeof dashboardSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;

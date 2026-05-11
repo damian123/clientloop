@@ -5,6 +5,7 @@ import {
   createLeadSchema,
   createOpportunitySchema,
   createTaskSchema,
+  createWebhookSubscriptionSchema,
   type AppendNoteInput,
   type CompleteTaskInput,
   type CreateAccountInput,
@@ -12,6 +13,8 @@ import {
   type CreateLeadInput,
   type CreateOpportunityInput,
   type CreateTaskInput,
+  type CreateWebhookSubscriptionInput,
+  type CreateWebhookSubscriptionResponse,
   type DashboardResponse,
   type SearchResult,
   type UpdateOpportunityInput
@@ -22,7 +25,8 @@ import type {
   Lead,
   Opportunity,
   Page,
-  Task
+  Task,
+  WebhookSubscription
 } from "@clientloop/domain";
 import type { ZodType } from "zod";
 
@@ -147,6 +151,24 @@ export class CRMClient {
 
   async appendNote(input: AppendNoteInput) {
     return this.request("/v1/notes", this.jsonRequest("POST", input), apiSchemas.note);
+  }
+
+  async listWebhookSubscriptions(): Promise<WebhookSubscription[]> {
+    return this.request(
+      "/v1/webhooks/subscriptions",
+      { method: "GET" },
+      apiSchemas.webhookSubscriptions
+    );
+  }
+
+  async createWebhookSubscription(
+    input: CreateWebhookSubscriptionInput
+  ): Promise<CreateWebhookSubscriptionResponse> {
+    return this.request(
+      "/v1/webhooks/subscriptions",
+      this.jsonRequest("POST", createWebhookSubscriptionSchema.parse(input)),
+      apiSchemas.createWebhookSubscriptionResponse
+    );
   }
 
   async search(query: string): Promise<SearchResult[]> {

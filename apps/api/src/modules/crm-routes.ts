@@ -7,6 +7,7 @@ import {
   createLeadSchema,
   createOpportunitySchema,
   createTaskSchema,
+  createWebhookSubscriptionSchema,
   listQuerySchema,
   searchQuerySchema,
   updateOpportunitySchema
@@ -141,6 +142,20 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
   app.get("/v1/custom-fields", async (request) => {
     const principal = await principalFromRequest(request, repository);
     return repository.listCustomFieldDefinitions(principal.tenantId);
+  });
+
+  app.get("/v1/webhooks/subscriptions", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    return repository.listWebhookSubscriptions(principal.tenantId);
+  });
+
+  app.post("/v1/webhooks/subscriptions", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const subscription = await repository.createWebhookSubscription(
+      principal,
+      createWebhookSubscriptionSchema.parse(request.body)
+    );
+    return reply.code(201).send(subscription);
   });
 
   app.get("/v1/search", async (request) => {

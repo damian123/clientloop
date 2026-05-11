@@ -406,16 +406,17 @@ model OutboxEvent {
 }
 
 model WebhookSubscription {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @map("tenant_id") @db.Uuid
-  url         String
-  secretHash  String    @map("secret_hash")
-  eventTypes  String[]  @map("event_types")
-  isActive    Boolean   @default(true) @map("is_active")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  lastErrorAt DateTime? @map("last_error_at") @db.Timestamptz(6)
-  lastError   String?   @map("last_error")
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  url             String
+  secretHash      String    @map("secret_hash")
+  secretEncrypted String    @default("") @map("secret_encrypted")
+  eventTypes      String[]  @map("event_types")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastErrorAt     DateTime? @map("last_error_at") @db.Timestamptz(6)
+  lastError       String?   @map("last_error")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 

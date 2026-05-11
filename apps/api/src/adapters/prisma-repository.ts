@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import {
   assertCan,
@@ -27,7 +27,8 @@ import {
   type Role,
   type Task,
   type TenantId,
-  type User
+  type User,
+  type WebhookSubscription
 } from "@clientloop/domain";
 import type {
   AppendNoteInput,
@@ -36,13 +37,15 @@ import type {
   CreateLeadInput,
   CreateOpportunityInput,
   CreateTaskInput,
+  CreateWebhookSubscriptionInput,
+  CreateWebhookSubscriptionResponse,
   DashboardResponse,
   ListQuery,
   SearchQuery,
   SearchResult,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
-import type { CRMRepository } from "../repository";
+import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
 
 type PrismaTransaction = Omit<
   PrismaClient,
@@ -824,9 +827,68 @@ export class PrismaCRMRepository implements CRMRepository {
     ].slice(0, query.limit);
   }
 
+  async listWebhookSubscriptions(tenantId: TenantId): Promise<WebhookSubscription[]> {
+    const subscriptions = await this.prisma.webhookSubscription.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return subscriptions.map((subscription) => this.toWebhookSubscription(subscription));
+  }
+
+  async createWebhookSubscription(
+    principal: AccessPrincipal,
+    input: CreateWebhookSubscriptionInput
+  ): Promise<CreateWebhookSubscriptionResponse> {
+    assertCan(principal, "admin", "manage", { tenantId: principal.tenantId });
+    const signingSecret = input.signingSecret ?? randomBytes(32).toString("hex");
+    const subscription = await this.prisma.webhookSubscription.create({
+      data: {
+        tenantId: principal.tenantId,
+        url: input.url,
+        eventTypes: input.eventTypes,
+        isActive: true,
+        secretHash: this.hashSecret(signingSecret),
+        secretEncrypted: signingSecret
+      }
+    });
+
+    return {
+      ...this.toWebhookSubscription(subscription),
+      eventTypes: input.eventTypes,
+      signingSecret
+    };
+  }
+
+  async activeWebhookSubscriptions(
+    tenantId: TenantId,
+    eventType: OutboxEvent["type"]
+  ): Promise<WebhookDeliveryTarget[]> {
+    const subscriptions = await this.prisma.webhookSubscription.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        OR: [
+          { eventTypes: { has: eventType } },
+          { eventTypes: { has: "*" } }
+        ]
+      },
+      orderBy: { createdAt: "asc" }
+    });
+
+    return subscriptions.map((subscription) => this.toWebhookDeliveryTarget(subscription));
+  }
+
   async pendingOutbox(limit: number): Promise<OutboxEvent[]> {
+    const now = new Date();
     const events = await this.prisma.outboxEvent.findMany({
-      where: { status: "pending" },
+      where: {
+        status: { in: ["pending", "failed"] },
+        OR: [
+          { nextAttemptAt: null },
+          { nextAttemptAt: { lte: now } }
+        ]
+      },
       orderBy: { occurredAt: "asc" },
       take: limit
     });
@@ -839,7 +901,21 @@ export class PrismaCRMRepository implements CRMRepository {
       where: { id },
       data: {
         status: "delivered",
-        deliveredAt: new Date()
+        deliveredAt: new Date(),
+        lastError: null,
+        nextAttemptAt: null
+      }
+    });
+  }
+
+  async markOutboxFailed(id: string, error: string, nextAttemptAt: string): Promise<void> {
+    await this.prisma.outboxEvent.update({
+      where: { id },
+      data: {
+        status: "failed",
+        attempts: { increment: 1 },
+        nextAttemptAt: new Date(nextAttemptAt),
+        lastError: error.slice(0, 1_000)
       }
     });
   }
@@ -1068,6 +1144,32 @@ export class PrismaCRMRepository implements CRMRepository {
     };
   }
 
+  private toWebhookSubscription(
+    subscription: Prisma.WebhookSubscriptionGetPayload<object>
+  ): WebhookSubscription {
+    return {
+      id: subscription.id,
+      tenantId: subscription.tenantId,
+      url: subscription.url,
+      eventTypes: subscription.eventTypes,
+      isActive: subscription.isActive,
+      secretFingerprint: subscription.secretHash,
+      createdAt: subscription.createdAt.toISOString(),
+      updatedAt: subscription.updatedAt.toISOString(),
+      lastErrorAt: subscription.lastErrorAt?.toISOString() ?? null,
+      lastError: subscription.lastError
+    };
+  }
+
+  private toWebhookDeliveryTarget(
+    subscription: Prisma.WebhookSubscriptionGetPayload<object>
+  ): WebhookDeliveryTarget {
+    return {
+      ...this.toWebhookSubscription(subscription),
+      signingSecret: subscription.secretEncrypted
+    };
+  }
+
   private page<T extends { id: string }>(items: T[], limit = 50): Page<T> {
     const pageItems = items.slice(0, limit);
     const lastItem = pageItems.at(-1);
@@ -1106,6 +1208,10 @@ export class PrismaCRMRepository implements CRMRepository {
 
   private hashRequest(body: unknown): string {
     return createHash("sha256").update(JSON.stringify(body)).digest("hex");
+  }
+
+  private hashSecret(secret: string): string {
+    return createHash("sha256").update(secret).digest("hex");
   }
 
   private async enqueueEvent(

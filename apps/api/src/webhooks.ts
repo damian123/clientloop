@@ -1,20 +1,5 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { buildServer } from "./server";
-
-export function signWebhookPayload(payload: string, secret: string): string {
-  return createHmac("sha256", secret).update(payload).digest("hex");
-}
-
-export function verifyWebhookSignature(payload: string, signature: string, secret: string): boolean {
-  const expected = signWebhookPayload(payload, secret);
-  const expectedBuffer = Buffer.from(expected, "hex");
-  const signatureBuffer = Buffer.from(signature, "hex");
-
-  return (
-    expectedBuffer.length === signatureBuffer.length &&
-    timingSafeEqual(expectedBuffer, signatureBuffer)
-  );
-}
+import { verifyWebhookSignature } from "./webhook-signing";
 
 const app = await buildServer();
 
