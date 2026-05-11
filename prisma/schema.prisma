@@ -1,0 +1,441 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  prospect
+  customer
+  partner
+  inactive
+}
+
+enum LeadStatus {
+  new
+  qualified
+  disqualified
+  converted
+}
+
+enum OpportunityStage {
+  qualification
+  discovery
+  proposal
+  negotiation
+  closed_won
+  closed_lost
+}
+
+enum TaskStatus {
+  open
+  in_progress
+  done
+  cancelled
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+}
+
+enum UserStatus {
+  invited
+  active
+  suspended
+}
+
+enum OutboxStatus {
+  pending
+  delivering
+  delivered
+  failed
+}
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  users                  User[]
+  roles                  Role[]
+  accounts               Account[]
+  contacts               Contact[]
+  leads                  Lead[]
+  opportunities          Opportunity[]
+  tasks                  Task[]
+  notes                  Note[]
+  activities             Activity[]
+  customFieldDefinitions CustomFieldDefinition[]
+  customFieldValues      CustomFieldValue[]
+  auditLogs              AuditLog[]
+  outboxEvents           OutboxEvent[]
+  webhookSubscriptions   WebhookSubscription[]
+  idempotencyKeys        IdempotencyKey[]
+
+  @@map("tenants")
+}
+
+model User {
+  id          String     @id @default(uuid()) @db.Uuid
+  tenantId    String     @map("tenant_id") @db.Uuid
+  email       String
+  displayName String     @map("display_name")
+  status      UserStatus @default(invited)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy   String?    @map("created_by") @db.Uuid
+  updatedBy   String?    @map("updated_by") @db.Uuid
+  version     Int        @default(1)
+  archivedAt  DateTime?  @map("archived_at") @db.Timestamptz(6)
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roles  UserRole[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, status])
+  @@map("users")
+}
+
+model Role {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  version   Int      @default(1)
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@unique([tenantId, name])
+  @@map("roles")
+}
+
+model Permission {
+  id           String  @id @default(uuid()) @db.Uuid
+  resource     String
+  action       String
+  conditionKey String? @map("condition_key")
+
+  roles RolePermission[]
+
+  @@unique([resource, action, conditionKey])
+  @@map("permissions")
+}
+
+model UserRole {
+  userId String @map("user_id") @db.Uuid
+  roleId String @map("role_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model Account {
+  id           String        @id @default(uuid()) @db.Uuid
+  tenantId     String        @map("tenant_id") @db.Uuid
+  name         String
+  domain       String?
+  ownerUserId  String?       @map("owner_user_id") @db.Uuid
+  status       AccountStatus @default(prospect)
+  customFields Json          @default("{}") @map("custom_fields")
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy    String        @map("created_by") @db.Uuid
+  updatedBy    String        @map("updated_by") @db.Uuid
+  version      Int           @default(1)
+  archivedAt   DateTime?     @map("archived_at") @db.Timestamptz(6)
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts      Contact[]
+  opportunities Opportunity[]
+
+  @@index([tenantId, ownerUserId, status])
+  @@index([tenantId, name])
+  @@map("accounts")
+}
+
+model Contact {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  accountId    String?   @map("account_id") @db.Uuid
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  email        String?
+  phone        String?
+  ownerUserId  String?   @map("owner_user_id") @db.Uuid
+  customFields Json      @default("{}") @map("custom_fields")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy    String    @map("created_by") @db.Uuid
+  updatedBy    String    @map("updated_by") @db.Uuid
+  version      Int       @default(1)
+  archivedAt   DateTime? @map("archived_at") @db.Timestamptz(6)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  primaryOpportunities Opportunity[]
+
+  @@index([tenantId, accountId, lastName, firstName])
+  @@index([tenantId, email])
+  @@map("contacts")
+}
+
+model Lead {
+  id                     String     @id @default(uuid()) @db.Uuid
+  tenantId               String     @map("tenant_id") @db.Uuid
+  source                 String
+  companyName            String?    @map("company_name")
+  contactName            String     @map("contact_name")
+  email                  String?
+  status                 LeadStatus @default(new)
+  convertedAt            DateTime?  @map("converted_at") @db.Timestamptz(6)
+  convertedAccountId     String?    @map("converted_account_id") @db.Uuid
+  convertedContactId     String?    @map("converted_contact_id") @db.Uuid
+  convertedOpportunityId String?    @map("converted_opportunity_id") @db.Uuid
+  customFields           Json       @default("{}") @map("custom_fields")
+  createdAt              DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy              String     @map("created_by") @db.Uuid
+  updatedBy              String     @map("updated_by") @db.Uuid
+  version                Int        @default(1)
+  archivedAt             DateTime?  @map("archived_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, source])
+  @@index([tenantId, email])
+  @@map("leads")
+}
+
+model Opportunity {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id") @db.Uuid
+  accountId         String           @map("account_id") @db.Uuid
+  primaryContactId  String?          @map("primary_contact_id") @db.Uuid
+  name              String
+  stage             OpportunityStage @default(qualification)
+  amount            Decimal?         @db.Decimal(18, 2)
+  currency          String           @db.Char(3)
+  expectedCloseDate DateTime?        @map("expected_close_date") @db.Date
+  ownerUserId       String           @map("owner_user_id") @db.Uuid
+  probabilityPct    Int?             @map("probability_pct")
+  customFields      Json             @default("{}") @map("custom_fields")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy         String           @map("created_by") @db.Uuid
+  updatedBy         String           @map("updated_by") @db.Uuid
+  version           Int              @default(1)
+  archivedAt        DateTime?        @map("archived_at") @db.Timestamptz(6)
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  contact Contact? @relation(fields: [primaryContactId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, ownerUserId, stage, expectedCloseDate(sort: Desc)])
+  @@index([tenantId, accountId])
+  @@map("opportunities")
+}
+
+model Task {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  parentType     String?      @map("parent_type")
+  parentId       String?      @map("parent_id") @db.Uuid
+  title          String
+  description    String?
+  status         TaskStatus   @default(open)
+  priority       TaskPriority @default(medium)
+  dueAt          DateTime?    @map("due_at") @db.Timestamptz(6)
+  assignedUserId String       @map("assigned_user_id") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy      String       @map("created_by") @db.Uuid
+  updatedBy      String       @map("updated_by") @db.Uuid
+  version        Int          @default(1)
+  archivedAt     DateTime?    @map("archived_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, assignedUserId, status, dueAt])
+  @@index([tenantId, parentType, parentId])
+  @@map("tasks")
+}
+
+model Note {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  parentType String   @map("parent_type")
+  parentId   String   @map("parent_id") @db.Uuid
+  body       String
+  bodyFormat String   @default("plain_text") @map("body_format")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy  String   @map("created_by") @db.Uuid
+  updatedBy  String   @map("updated_by") @db.Uuid
+  version    Int      @default(1)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, parentType, parentId, createdAt(sort: Desc)])
+  @@map("notes")
+}
+
+model Activity {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  parentType String   @map("parent_type")
+  parentId   String   @map("parent_id") @db.Uuid
+  kind       String
+  subject    String
+  occurredAt DateTime @map("occurred_at") @db.Timestamptz(6)
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy  String   @map("created_by") @db.Uuid
+  updatedBy  String   @map("updated_by") @db.Uuid
+  version    Int      @default(1)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, parentType, parentId, occurredAt(sort: Desc)])
+  @@map("activities")
+}
+
+model CustomFieldDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  entityType  String   @map("entity_type")
+  key         String
+  label       String
+  fieldType   String   @map("field_type")
+  required    Boolean  @default(false)
+  isIndexed   Boolean  @default(false) @map("is_indexed")
+  schema      Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy   String   @map("created_by") @db.Uuid
+  updatedBy   String   @map("updated_by") @db.Uuid
+  version     Int      @default(1)
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  values CustomFieldValue[]
+
+  @@unique([tenantId, entityType, key])
+  @@index([tenantId, entityType, isIndexed])
+  @@map("custom_field_definitions")
+}
+
+model CustomFieldValue {
+  id                String @id @default(uuid()) @db.Uuid
+  tenantId          String @map("tenant_id") @db.Uuid
+  fieldDefinitionId String @map("field_definition_id") @db.Uuid
+  entityType        String @map("entity_type")
+  entityId          String @map("entity_id") @db.Uuid
+  value             Json
+
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fieldDefinition CustomFieldDefinition @relation(fields: [fieldDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, fieldDefinitionId, entityType, entityId])
+  @@index([tenantId, entityType, entityId])
+  @@map("custom_field_values")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id") @db.Uuid
+  action      String
+  actorUserId String   @map("actor_user_id") @db.Uuid
+  occurredAt  DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  before      Json?
+  after       Json?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, entityType, entityId, occurredAt(sort: Desc)])
+  @@index([tenantId, actorUserId, occurredAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model OutboxEvent {
+  id            String       @id @default(uuid()) @db.Uuid
+  tenantId      String       @map("tenant_id") @db.Uuid
+  type          String
+  entityType    String       @map("entity_type")
+  entityId      String       @map("entity_id") @db.Uuid
+  actorUserId   String       @map("actor_user_id") @db.Uuid
+  occurredAt    DateTime     @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  payload       Json         @default("{}")
+  status        OutboxStatus @default(pending)
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime?    @map("next_attempt_at") @db.Timestamptz(6)
+  deliveredAt   DateTime?    @map("delivered_at") @db.Timestamptz(6)
+  lastError     String?      @map("last_error")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt, occurredAt])
+  @@index([tenantId, entityType, entityId, occurredAt(sort: Desc)])
+  @@map("outbox_events")
+}
+
+model WebhookSubscription {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  url         String
+  secretHash  String    @map("secret_hash")
+  eventTypes  String[]  @map("event_types")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastErrorAt DateTime? @map("last_error_at") @db.Timestamptz(6)
+  lastError   String?   @map("last_error")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, isActive])
+  @@map("webhook_subscriptions")
+}
+
+model IdempotencyKey {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  key         String
+  route       String
+  requestHash String   @map("request_hash")
+  response    Json
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt   DateTime @map("expires_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, route, key])
+  @@index([expiresAt])
+  @@map("idempotency_keys")
+}

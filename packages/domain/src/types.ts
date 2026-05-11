@@ -1,0 +1,220 @@
+export type EntityId = string;
+export type TenantId = string;
+export type ISODate = string;
+
+export type CRMEntityType =
+  | "account"
+  | "contact"
+  | "lead"
+  | "opportunity"
+  | "activity"
+  | "task"
+  | "note"
+  | "user";
+
+export type RecordEntityType = Extract<
+  CRMEntityType,
+  "account" | "contact" | "lead" | "opportunity"
+>;
+
+export interface AuditFields {
+  tenantId: TenantId;
+  createdAt: ISODate;
+  updatedAt: ISODate;
+  createdBy: EntityId;
+  updatedBy: EntityId;
+  version: number;
+  archivedAt?: ISODate | null | undefined;
+}
+
+export type CustomFieldType =
+  | "text"
+  | "textarea"
+  | "number"
+  | "boolean"
+  | "date"
+  | "datetime"
+  | "single_select"
+  | "multi_select"
+  | "currency"
+  | "user_ref"
+  | "account_ref";
+
+export type CustomFieldPrimitive =
+  | string
+  | number
+  | boolean
+  | null
+  | string[]
+  | { id: string; label: string }
+  | { amount: number; currency: string };
+
+export interface CustomFieldDefinition extends AuditFields {
+  id: EntityId;
+  entityType: RecordEntityType;
+  key: string;
+  label: string;
+  fieldType: CustomFieldType;
+  required: boolean;
+  isIndexed: boolean;
+  schema?: Record<string, unknown> | undefined;
+}
+
+export interface Account extends AuditFields {
+  id: EntityId;
+  name: string;
+  domain?: string | null | undefined;
+  ownerUserId?: EntityId | null | undefined;
+  status: "prospect" | "customer" | "partner" | "inactive";
+  customFields: Record<string, CustomFieldPrimitive>;
+}
+
+export interface Contact extends AuditFields {
+  id: EntityId;
+  accountId?: EntityId | null | undefined;
+  firstName: string;
+  lastName: string;
+  email?: string | null | undefined;
+  phone?: string | null | undefined;
+  ownerUserId?: EntityId | null | undefined;
+  customFields: Record<string, CustomFieldPrimitive>;
+}
+
+export interface Lead extends AuditFields {
+  id: EntityId;
+  source: string;
+  companyName?: string | null | undefined;
+  contactName: string;
+  email?: string | null | undefined;
+  status: "new" | "qualified" | "disqualified" | "converted";
+  convertedAt?: ISODate | null | undefined;
+  convertedAccountId?: EntityId | null | undefined;
+  convertedContactId?: EntityId | null | undefined;
+  convertedOpportunityId?: EntityId | null | undefined;
+  customFields: Record<string, CustomFieldPrimitive>;
+}
+
+export type OpportunityStage =
+  | "qualification"
+  | "discovery"
+  | "proposal"
+  | "negotiation"
+  | "closed_won"
+  | "closed_lost";
+
+export interface Opportunity extends AuditFields {
+  id: EntityId;
+  accountId: EntityId;
+  primaryContactId?: EntityId | null | undefined;
+  name: string;
+  stage: OpportunityStage;
+  amount?: number | null | undefined;
+  currency: string;
+  expectedCloseDate?: ISODate | null | undefined;
+  ownerUserId: EntityId;
+  probabilityPct?: number | null | undefined;
+  customFields: Record<string, CustomFieldPrimitive>;
+}
+
+export interface EntityRef {
+  type: CRMEntityType;
+  id: EntityId;
+}
+
+export interface Activity extends AuditFields {
+  id: EntityId;
+  parent: EntityRef;
+  type: "call" | "email" | "meeting" | "event" | "system";
+  subject: string;
+  occurredAt: ISODate;
+  payload: Record<string, unknown>;
+}
+
+export interface Task extends AuditFields {
+  id: EntityId;
+  parent?: EntityRef | undefined;
+  title: string;
+  description?: string | null | undefined;
+  status: "open" | "in_progress" | "done" | "cancelled";
+  priority: "low" | "medium" | "high";
+  dueAt?: ISODate | null | undefined;
+  assignedUserId: EntityId;
+}
+
+export interface Note extends AuditFields {
+  id: EntityId;
+  parent: EntityRef;
+  body: string;
+  bodyFormat: "markdown" | "html" | "plain_text";
+}
+
+export type PermissionResource =
+  | "account"
+  | "contact"
+  | "lead"
+  | "opportunity"
+  | "activity"
+  | "task"
+  | "note"
+  | "custom_field"
+  | "user"
+  | "admin";
+
+export type PermissionAction =
+  | "read"
+  | "create"
+  | "update"
+  | "delete"
+  | "assign"
+  | "export"
+  | "manage";
+
+export type PermissionCondition = "own" | "team" | "tenant" | "all";
+
+export interface Permission {
+  id: EntityId;
+  resource: PermissionResource;
+  action: PermissionAction;
+  condition?: PermissionCondition | undefined;
+}
+
+export interface Role extends AuditFields {
+  id: EntityId;
+  name: string;
+  permissions: Permission[];
+}
+
+export interface User extends AuditFields {
+  id: EntityId;
+  email: string;
+  displayName: string;
+  status: "invited" | "active" | "suspended";
+  roleIds: EntityId[];
+  teamIds: EntityId[];
+}
+
+export interface PageInfo {
+  endCursor?: string | undefined;
+  hasNextPage: boolean;
+}
+
+export interface Page<T> {
+  items: T[];
+  pageInfo: PageInfo;
+}
+
+export interface AccessPrincipal {
+  tenantId: TenantId;
+  user: User;
+  roles: Role[];
+}
+
+export type CRMRecord =
+  | Account
+  | Contact
+  | Lead
+  | Opportunity
+  | Activity
+  | Task
+  | Note
+  | User;

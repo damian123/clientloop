@@ -1,0 +1,22 @@
+{
+  "name": "@clientloop/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "dev:scheduler": "tsx watch src/scheduler.ts",
+    "dev:webhooks": "tsx watch src/webhooks.ts",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@clientloop/contracts": "0.1.0",
+    "@clientloop/domain": "0.1.0",
+    "@fastify/cors": "^10.1.0",
+    "fastify": "^5.3.3",
+    "zod": "^3.24.4"
+  }
+}

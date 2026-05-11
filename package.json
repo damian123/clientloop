@@ -1,0 +1,33 @@
+{
+  "name": "clientloop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:api & npm run dev:web",
+    "dev:api": "npm run dev -w @clientloop/api",
+    "dev:web": "npm run dev -w @clientloop/web",
+    "build": "npm run build -w @clientloop/api && npm run build -w @clientloop/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "overrides": {
+    "next@15.5.18": {
+      "postcss": "8.5.14"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "prisma": "^6.7.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.2"
+  }
+}

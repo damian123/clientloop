@@ -1,0 +1,48 @@
+# ClientLoop CRM
+
+ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain contracts, a REST API, an outbox-ready async layer, PostgreSQL schema, and a Next.js web UI.
+
+## What is implemented
+
+- Shared `@clientloop/domain` package for CRM entities, permissions, custom fields, domain events, and business rules.
+- Shared `@clientloop/contracts` package for Zod-validated REST payloads and an OpenAPI 3.1 object.
+- Shared `@clientloop/ui-sdk` package for a typed browser/server API client.
+- `@clientloop/api` Fastify service with CRM modules, auth context, object-level authorization checks, optimistic concurrency, idempotency handling, audit fields, and outbox event emission.
+- `@clientloop/web` Next.js app with a usable CRM cockpit: pipeline, accounts, contacts, tasks, activity timeline, search, and custom-field presentation.
+- Prisma PostgreSQL schema covering tenants, users, roles, permissions, CRM records, custom fields, audit logs, outbox events, and webhook subscriptions.
+- Markdown task tracking under `docs/tasks`.
+
+## Run locally
+
+```bash
+npm install
+npm run dev:api
+npm run dev:web
+```
+
+The API runs on `http://localhost:4000` by default. The web app runs on `http://localhost:3000`.
+
+The API currently uses an in-memory repository so the product is runnable without PostgreSQL. The Prisma schema is present for the durable store implementation path.
+
+## Verify
+
+```bash
+npm run typecheck
+npm test
+npm run build
+```
+
+## CI
+
+A GitHub Actions workflow template is stored at `docs/ci/github-actions-ci.yml`. Move it to `.github/workflows/ci.yml` after pushing with a GitHub token that includes the `workflow` scope.
+
+## Architecture
+
+The repo is organized as a modular monolith:
+
+- `apps/api`: API, worker, scheduler, and webhook runtime entrypoints.
+- `apps/web`: Next.js UI.
+- `packages/domain`: canonical CRM types and business rules.
+- `packages/contracts`: schema-validated API contracts.
+- `packages/ui-sdk`: generated-style typed client boundary.
+- `prisma`: PostgreSQL operational schema.

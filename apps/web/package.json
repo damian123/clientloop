@@ -1,0 +1,25 @@
+{
+  "name": "@clientloop/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@clientloop/contracts": "0.1.0",
+    "@clientloop/domain": "0.1.0",
+    "@clientloop/ui-sdk": "0.1.0",
+    "lucide-react": "^0.511.0",
+    "next": "^15.3.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4"
+  }
+}
