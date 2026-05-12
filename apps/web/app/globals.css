@@ -779,6 +779,46 @@ tr:last-child td {
   gap: 10px;
 }
 
+.task-composer {
+  display: grid;
+  gap: 8px;
+}
+
+.task-composer label {
+  display: grid;
+  gap: 4px;
+}
+
+.task-composer label > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.task-composer input,
+.task-composer select,
+.task-composer textarea {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  background: var(--panel-muted);
+  color: var(--text);
+}
+
+.task-composer textarea {
+  min-height: 72px;
+  padding-top: 8px;
+  resize: vertical;
+}
+
+.task-composer-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .detail-list {
   display: grid;
   gap: 8px;

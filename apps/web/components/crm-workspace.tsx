@@ -22,6 +22,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ContactImportPreview,
+  CreateTaskInput,
   CreateCustomFieldDefinitionInput,
   DashboardResponse,
   ExportEntity,
@@ -429,6 +430,40 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
         );
       }
     }
+  }
+
+  async function createFollowUpTask(input: CreateTaskInput) {
+    if (!apiBaseUrl) {
+      const now = new Date().toISOString();
+      const task: Task = {
+        id: crypto.randomUUID(),
+        parent: input.parent,
+        title: input.title,
+        description: input.description ?? null,
+        status: "open",
+        priority: input.priority,
+        dueAt: input.dueAt ?? null,
+        assignedUserId: input.assignedUserId,
+        tenantId: seedTenantId,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: seedManagerId,
+        updatedBy: seedManagerId,
+        version: 1,
+        archivedAt: null
+      };
+      setTasks((current) => [task, ...current]);
+      return task;
+    }
+
+    const client = await authenticatedClient();
+    if (!client) {
+      throw new Error("Session is unavailable");
+    }
+
+    const task = await client.createTask(input);
+    setTasks((current) => [task, ...current]);
+    return task;
   }
 
   async function convertLeadToOpportunity(lead: Lead) {
@@ -867,6 +902,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 record={selectedRecordDetail.record}
                 savingCustomFieldRecordId={savingCustomFieldRecordId}
                 onClose={closeRecordDetail}
+                onCreateTask={createFollowUpTask}
                 onCustomFieldDraftChange={updateCustomFieldDraftValue}
                 onSaveCustomFields={saveRecordCustomFields}
               />
@@ -874,6 +910,8 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             <TaskQueue
               tasks={tasks}
               accountsById={accountsById}
+              contactsById={contactsById}
+              leads={leads}
               opportunities={opportunities}
               onComplete={completeTask}
             />
@@ -1449,6 +1487,7 @@ function RecordDetailPanel({
   record,
   savingCustomFieldRecordId,
   onClose,
+  onCreateTask,
   onCustomFieldDraftChange,
   onSaveCustomFields
 }: {
@@ -1462,6 +1501,7 @@ function RecordDetailPanel({
   record: CustomFieldRecord;
   savingCustomFieldRecordId: string | null;
   onClose: () => void;
+  onCreateTask: (input: CreateTaskInput) => Promise<Task>;
   onCustomFieldDraftChange: (
     entityType: RecordEntityType,
     recordId: string,
@@ -1497,6 +1537,55 @@ function RecordDetailPanel({
     (sum, opportunity) => sum + (opportunity.amount ?? 0),
     0
   );
+  const [taskDraft, setTaskDraft] = useState({
+    title: "",
+    description: "",
+    dueAt: "",
+    priority: "medium" as Task["priority"]
+  });
+  const [taskMessage, setTaskMessage] = useState("");
+  const [creatingTask, setCreatingTask] = useState(false);
+
+  useEffect(() => {
+    setTaskDraft({
+      title: "",
+      description: "",
+      dueAt: "",
+      priority: "medium"
+    });
+    setTaskMessage("");
+  }, [entityType, record.id]);
+
+  async function submitTask() {
+    const title = taskDraft.title.trim();
+    if (!title || creatingTask) {
+      return;
+    }
+
+    setCreatingTask(true);
+    setTaskMessage("");
+    try {
+      await onCreateTask({
+        parent: { type: entityType, id: record.id },
+        title,
+        description: taskDraft.description.trim() || undefined,
+        priority: taskDraft.priority,
+        dueAt: taskDraft.dueAt || undefined,
+        assignedUserId: seedManagerId
+      });
+      setTaskDraft({
+        title: "",
+        description: "",
+        dueAt: "",
+        priority: "medium"
+      });
+      setTaskMessage("Task added");
+    } catch (error) {
+      setTaskMessage(errorSummary(error));
+    } finally {
+      setCreatingTask(false);
+    }
+  }
 
   return (
     <section className="queue-panel detail-panel" aria-label="Record detail">
@@ -1544,6 +1633,71 @@ function RecordDetailPanel({
           </>
         ) : null}
       </div>
+
+      <section className="detail-section" aria-label="Create follow-up task">
+        <div>
+          <p className="eyebrow">Follow-up</p>
+          <h4>Create task</h4>
+        </div>
+        <div className="task-composer">
+          <label>
+            <span>Title</span>
+            <input
+              value={taskDraft.title}
+              onChange={(event) =>
+                setTaskDraft((current) => ({ ...current, title: event.target.value }))
+              }
+              placeholder={`Follow up with ${recordLabel(record)}`}
+            />
+          </label>
+          <div className="task-composer-row">
+            <label>
+              <span>Due</span>
+              <input
+                type="date"
+                value={taskDraft.dueAt}
+                onChange={(event) =>
+                  setTaskDraft((current) => ({ ...current, dueAt: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>Priority</span>
+              <select
+                value={taskDraft.priority}
+                onChange={(event) =>
+                  setTaskDraft((current) => ({
+                    ...current,
+                    priority: event.target.value as Task["priority"]
+                  }))
+                }
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            <span>Description</span>
+            <textarea
+              value={taskDraft.description}
+              onChange={(event) =>
+                setTaskDraft((current) => ({ ...current, description: event.target.value }))
+              }
+              placeholder="Context for the next touch"
+            />
+          </label>
+          <button
+            className="table-action"
+            disabled={creatingTask || taskDraft.title.trim().length === 0}
+            onClick={submitTask}
+          >
+            <Plus size={16} /> Add task
+          </button>
+        </div>
+        {taskMessage ? <p className="data-message">{taskMessage}</p> : null}
+      </section>
 
       <section className="detail-section" aria-label="Custom field values">
         <div>
@@ -1647,14 +1801,19 @@ function TaskQueue({
   tasks,
   opportunities,
   accountsById,
+  contactsById,
+  leads,
   onComplete
 }: {
   tasks: Task[];
   opportunities: Opportunity[];
   accountsById: Map<string, Account>;
+  contactsById: Map<string, Contact>;
+  leads: Lead[];
   onComplete: (task: Task) => void;
 }) {
   const opportunityById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
+  const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
 
   return (
     <section className="queue-panel" aria-label="Tasks">
@@ -1675,12 +1834,20 @@ function TaskQueue({
               : parentOpportunity
                 ? accountsById.get(parentOpportunity.accountId)
                 : undefined;
+          const parentContact =
+            task.parent?.type === "contact" ? contactsById.get(task.parent.id) : undefined;
+          const parentLead = task.parent?.type === "lead" ? leadsById.get(task.parent.id) : undefined;
+          const parentName =
+            parentAccount?.name ??
+            (parentContact ? `${parentContact.firstName} ${parentContact.lastName}` : undefined) ??
+            parentLead?.contactName ??
+            "Unlinked";
 
           return (
             <article className={`task-item ${task.status === "done" ? "done" : ""}`} key={task.id}>
               <div>
                 <h4>{task.title}</h4>
-                <p>{parentAccount?.name ?? "Unlinked"}</p>
+                <p>{parentName}</p>
                 <span>{formatDate(task.dueAt)}</span>
               </div>
               <button
