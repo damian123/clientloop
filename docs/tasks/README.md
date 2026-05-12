@@ -17,3 +17,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0013-workspace-deep-links.md](./0013-workspace-deep-links.md)
 - [0014-detail-follow-up-tasks.md](./0014-detail-follow-up-tasks.md)
 - [0015-detail-record-notes.md](./0015-detail-record-notes.md)
+- [0016-detail-activity-logging.md](./0016-detail-activity-logging.md)

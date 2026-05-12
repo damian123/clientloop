@@ -123,6 +123,14 @@ export const appendNoteSchema = z.object({
   bodyFormat: z.enum(["markdown", "html", "plain_text"]).default("plain_text")
 });
 
+export const createActivitySchema = z.object({
+  parent: z.object({ type: entityTypeSchema, id: idSchema }),
+  type: z.enum(["call", "email", "meeting", "event", "system"]),
+  subject: z.string().min(1),
+  occurredAt: z.string().optional(),
+  payload: z.record(z.unknown()).default({})
+});
+
 export const createCustomFieldDefinitionSchema = z.object({
   entityType: recordEntityTypeSchema,
   key: z.string().min(1).optional(),
@@ -281,6 +289,7 @@ export type UpdateOpportunityInput = z.infer<typeof updateOpportunitySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
+export type CreateActivityInput = z.infer<typeof createActivitySchema>;
 export type CreateCustomFieldDefinitionInput = z.infer<typeof createCustomFieldDefinitionSchema>;
 export type UpdateCustomFieldValuesInput = z.infer<typeof updateCustomFieldValuesSchema>;
 export type CustomFieldValueUpdateResult = z.infer<typeof customFieldValueUpdateResultSchema>;

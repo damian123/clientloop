@@ -37,6 +37,7 @@ import {
 import type {
   AppendNoteInput,
   ConvertLeadInput,
+  CreateActivityInput,
   CreateAccountInput,
   CreateContactInput,
   CreateCustomFieldDefinitionInput,
@@ -914,6 +915,45 @@ export class PrismaCRMRepository implements CRMRepository {
     });
 
     return this.page(items.map((item) => this.toActivity(item)), query.limit);
+  }
+
+  async createActivity(principal: AccessPrincipal, input: CreateActivityInput): Promise<Activity> {
+    assertCan(principal, "activity", "create", { tenantId: principal.tenantId });
+    const now = new Date();
+    const occurredAt = input.occurredAt ? new Date(input.occurredAt) : now;
+    const id = randomUUID();
+    const audit = createAuditFields({
+      tenantId: principal.tenantId,
+      actorUserId: principal.user.id,
+      now: now.toISOString()
+    });
+
+    const activity = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.activity.create({
+        data: {
+          id,
+          tenantId: audit.tenantId,
+          parentType: input.parent.type,
+          parentId: input.parent.id,
+          kind: input.type,
+          subject: input.subject,
+          occurredAt,
+          payload: input.payload as Prisma.InputJsonObject,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: audit.createdBy,
+          updatedBy: audit.updatedBy,
+          version: audit.version
+        }
+      });
+      await this.enqueueEvent(tx, "activity.logged", "activity", id, principal, now, {
+        parent: input.parent,
+        type: input.type
+      });
+      return created;
+    });
+
+    return this.toActivity(activity);
   }
 
   async listCustomFieldDefinitions(tenantId: TenantId): Promise<CustomFieldDefinition[]> {

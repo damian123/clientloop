@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   appendNoteSchema,
   completeTaskSchema,
+  createActivitySchema,
   createAccountSchema,
   createContactSchema,
   createCustomFieldDefinitionSchema,
@@ -157,6 +158,15 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
   app.get("/v1/activities", async (request) => {
     const principal = await principalFromRequest(request, repository);
     return repository.listActivities(principal.tenantId, listQuerySchema.parse(request.query));
+  });
+
+  app.post("/v1/activities", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const activity = await repository.createActivity(
+      principal,
+      createActivitySchema.parse(request.body)
+    );
+    return reply.code(201).send(activity);
   });
 
   app.get("/v1/custom-fields", async (request) => {

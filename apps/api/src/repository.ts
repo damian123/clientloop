@@ -16,6 +16,7 @@ import type {
 import type {
   AppendNoteInput,
   ConvertLeadInput,
+  CreateActivityInput,
   CreateAccountInput,
   CreateContactInput,
   CreateCustomFieldDefinitionInput,
@@ -74,6 +75,7 @@ export interface CRMRepository {
   }): Promise<Task>;
   appendNote(principal: AccessPrincipal, input: AppendNoteInput): Promise<Note>;
   listActivities(tenantId: TenantId, query: ListQuery): Promise<Page<Activity>>;
+  createActivity(principal: AccessPrincipal, input: CreateActivityInput): Promise<Activity>;
   listCustomFieldDefinitions(tenantId: TenantId): Promise<CustomFieldDefinition[]>;
   createCustomFieldDefinition(
     principal: AccessPrincipal,

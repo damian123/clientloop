@@ -780,19 +780,22 @@ tr:last-child td {
 }
 
 .task-composer,
-.note-composer {
+.note-composer,
+.activity-composer {
   display: grid;
   gap: 8px;
 }
 
 .task-composer label,
-.note-composer label {
+.note-composer label,
+.activity-composer label {
   display: grid;
   gap: 4px;
 }
 
 .task-composer label > span,
-.note-composer label > span {
+.note-composer label > span,
+.activity-composer label > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
@@ -801,6 +804,8 @@ tr:last-child td {
 .task-composer input,
 .task-composer select,
 .task-composer textarea,
+.activity-composer input,
+.activity-composer select,
 .note-composer textarea {
   width: 100%;
   min-height: 34px;

@@ -1,6 +1,7 @@
 import {
   apiSchemas,
   createAccountSchema,
+  createActivitySchema,
   createContactSchema,
   createCustomFieldDefinitionSchema,
   createLeadSchema,
@@ -18,6 +19,7 @@ import {
   type ContactImportRequest,
   type ContactImportResult,
   type ConvertLeadInput,
+  type CreateActivityInput,
   type CreateAccountInput,
   type CreateContactInput,
   type CreateCustomFieldDefinitionInput,
@@ -38,6 +40,7 @@ import {
 } from "@clientloop/contracts";
 import type {
   Account,
+  Activity,
   Contact,
   CustomFieldDefinition,
   Lead,
@@ -215,6 +218,14 @@ export class CRMClient {
 
   async appendNote(input: AppendNoteInput) {
     return this.request("/v1/notes", this.jsonRequest("POST", input), apiSchemas.note);
+  }
+
+  async createActivity(input: CreateActivityInput): Promise<Activity> {
+    return this.request(
+      "/v1/activities",
+      this.jsonRequest("POST", createActivitySchema.parse(input)),
+      apiSchemas.activity
+    );
   }
 
   async listCustomFieldDefinitions(): Promise<CustomFieldDefinition[]> {

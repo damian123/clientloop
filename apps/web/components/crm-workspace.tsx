@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppendNoteInput,
   ContactImportPreview,
+  CreateActivityInput,
   CreateTaskInput,
   CreateCustomFieldDefinitionInput,
   DashboardResponse,
@@ -31,6 +32,7 @@ import type {
 } from "@clientloop/contracts";
 import type {
   Account,
+  Activity as CRMActivity,
   Contact,
   CustomFieldDefinition,
   CustomFieldPrimitive,
@@ -93,6 +95,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [contacts, setContacts] = useState<Contact[]>(initialDashboard.contacts);
   const [tasks, setTasks] = useState<Task[]>(initialDashboard.tasks);
   const [notes, setNotes] = useState<Note[]>(initialDashboard.notes);
+  const [activities, setActivities] = useState<CRMActivity[]>(initialDashboard.activities);
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState<CustomFieldDefinition[]>(
     initialDashboard.customFieldDefinitions
   );
@@ -497,6 +500,38 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     const note = await client.appendNote(input);
     setNotes((current) => [note, ...current]);
     return note;
+  }
+
+  async function logRecordActivity(input: CreateActivityInput) {
+    if (!apiBaseUrl) {
+      const now = new Date().toISOString();
+      const activity: CRMActivity = {
+        id: crypto.randomUUID(),
+        parent: input.parent,
+        type: input.type,
+        subject: input.subject,
+        occurredAt: input.occurredAt ?? now,
+        payload: input.payload,
+        tenantId: seedTenantId,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: seedManagerId,
+        updatedBy: seedManagerId,
+        version: 1,
+        archivedAt: null
+      };
+      setActivities((current) => [activity, ...current]);
+      return activity;
+    }
+
+    const client = await authenticatedClient();
+    if (!client) {
+      throw new Error("Session is unavailable");
+    }
+
+    const activity = await client.createActivity(input);
+    setActivities((current) => [activity, ...current]);
+    return activity;
   }
 
   async function convertLeadToOpportunity(lead: Lead) {
@@ -930,6 +965,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 customFieldMessage={customFieldMessage}
                 customFieldValueDrafts={customFieldValueDrafts}
                 entityType={selectedRecordDetail.entityType}
+                activities={activities}
                 leads={leads}
                 notes={notes}
                 opportunities={opportunities}
@@ -937,6 +973,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 savingCustomFieldRecordId={savingCustomFieldRecordId}
                 onClose={closeRecordDetail}
                 onAppendNote={appendRecordNote}
+                onCreateActivity={logRecordActivity}
                 onCreateTask={createFollowUpTask}
                 onCustomFieldDraftChange={updateCustomFieldDraftValue}
                 onSaveCustomFields={saveRecordCustomFields}
@@ -951,7 +988,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               onComplete={completeTask}
             />
             <Timeline
-              activities={initialDashboard.activities}
+              activities={activities}
               opportunities={opportunities}
               accountsById={accountsById}
               contactsById={contactsById}
@@ -1517,6 +1554,7 @@ function RecordDetailPanel({
   customFieldMessage,
   customFieldValueDrafts,
   entityType,
+  activities,
   leads,
   notes,
   opportunities,
@@ -1524,6 +1562,7 @@ function RecordDetailPanel({
   savingCustomFieldRecordId,
   onClose,
   onAppendNote,
+  onCreateActivity,
   onCreateTask,
   onCustomFieldDraftChange,
   onSaveCustomFields
@@ -1533,6 +1572,7 @@ function RecordDetailPanel({
   customFieldMessage: string;
   customFieldValueDrafts: CustomFieldValueDrafts;
   entityType: RecordEntityType;
+  activities: CRMActivity[];
   leads: Lead[];
   notes: Note[];
   opportunities: Opportunity[];
@@ -1540,6 +1580,7 @@ function RecordDetailPanel({
   savingCustomFieldRecordId: string | null;
   onClose: () => void;
   onAppendNote: (input: AppendNoteInput) => Promise<Note>;
+  onCreateActivity: (input: CreateActivityInput) => Promise<CRMActivity>;
   onCreateTask: (input: CreateTaskInput) => Promise<Task>;
   onCustomFieldDraftChange: (
     entityType: RecordEntityType,
@@ -1579,6 +1620,9 @@ function RecordDetailPanel({
   const recordNotes = notes.filter(
     (note) => note.parent.type === entityType && note.parent.id === record.id
   );
+  const recordActivities = activities.filter(
+    (activity) => activity.parent.type === entityType && activity.parent.id === record.id
+  );
   const [taskDraft, setTaskDraft] = useState({
     title: "",
     description: "",
@@ -1590,6 +1634,12 @@ function RecordDetailPanel({
   const [noteBody, setNoteBody] = useState("");
   const [noteMessage, setNoteMessage] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [activityDraft, setActivityDraft] = useState({
+    type: "call" as CRMActivity["type"],
+    subject: ""
+  });
+  const [activityMessage, setActivityMessage] = useState("");
+  const [savingActivity, setSavingActivity] = useState(false);
 
   useEffect(() => {
     setTaskDraft({
@@ -1601,6 +1651,11 @@ function RecordDetailPanel({
     setTaskMessage("");
     setNoteBody("");
     setNoteMessage("");
+    setActivityDraft({
+      type: "call",
+      subject: ""
+    });
+    setActivityMessage("");
   }, [entityType, record.id]);
 
   async function submitTask() {
@@ -1654,6 +1709,33 @@ function RecordDetailPanel({
       setNoteMessage(errorSummary(error));
     } finally {
       setSavingNote(false);
+    }
+  }
+
+  async function submitActivity() {
+    const subject = activityDraft.subject.trim();
+    if (!subject || savingActivity) {
+      return;
+    }
+
+    setSavingActivity(true);
+    setActivityMessage("");
+    try {
+      await onCreateActivity({
+        parent: { type: entityType, id: record.id },
+        type: activityDraft.type,
+        subject,
+        payload: {}
+      });
+      setActivityDraft({
+        type: "call",
+        subject: ""
+      });
+      setActivityMessage("Activity logged");
+    } catch (error) {
+      setActivityMessage(errorSummary(error));
+    } finally {
+      setSavingActivity(false);
     }
   }
 
@@ -1801,6 +1883,64 @@ function RecordDetailPanel({
           ))}
           {recordNotes.length === 0 ? (
             <p className="detail-empty">No notes yet</p>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="detail-section" aria-label="Log activity">
+        <div>
+          <p className="eyebrow">Activity</p>
+          <h4>Log activity</h4>
+        </div>
+        <div className="activity-composer">
+          <div className="task-composer-row">
+            <label>
+              <span>Type</span>
+              <select
+                value={activityDraft.type}
+                onChange={(event) =>
+                  setActivityDraft((current) => ({
+                    ...current,
+                    type: event.target.value as CRMActivity["type"]
+                  }))
+                }
+              >
+                <option value="call">Call</option>
+                <option value="email">Email</option>
+                <option value="meeting">Meeting</option>
+                <option value="event">Event</option>
+              </select>
+            </label>
+            <label>
+              <span>Subject</span>
+              <input
+                value={activityDraft.subject}
+                onChange={(event) =>
+                  setActivityDraft((current) => ({ ...current, subject: event.target.value }))
+                }
+                placeholder={`Logged touch with ${recordLabel(record)}`}
+              />
+            </label>
+          </div>
+          <button
+            className="table-action"
+            disabled={savingActivity || activityDraft.subject.trim().length === 0}
+            onClick={submitActivity}
+          >
+            <Plus size={16} /> Log activity
+          </button>
+        </div>
+        {activityMessage ? <p className="data-message">{activityMessage}</p> : null}
+        <div className="detail-list">
+          {recordActivities.slice(0, 4).map((activity) => (
+            <div className="detail-list-row" key={activity.id}>
+              <strong>{activity.subject}</strong>
+              <span>{activity.type}</span>
+              <span>{formatDateTime(activity.occurredAt)}</span>
+            </div>
+          ))}
+          {recordActivities.length === 0 ? (
+            <p className="detail-empty">No activities yet</p>
           ) : null}
         </div>
       </section>

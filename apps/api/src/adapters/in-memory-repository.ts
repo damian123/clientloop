@@ -32,6 +32,7 @@ import {
 import type {
   AppendNoteInput,
   ConvertLeadInput,
+  CreateActivityInput,
   CreateAccountInput,
   CreateContactInput,
   CreateCustomFieldDefinitionInput,
@@ -484,6 +485,27 @@ export class InMemoryCRMRepository implements CRMRepository {
       "subject",
       "type"
     ]), query.limit);
+  }
+
+  async createActivity(principal: AccessPrincipal, input: CreateActivityInput): Promise<Activity> {
+    assertCan(principal, "activity", "create", { tenantId: principal.tenantId });
+    const now = new Date().toISOString();
+    const activity: Activity = {
+      id: randomUUID(),
+      parent: input.parent,
+      type: input.type,
+      subject: input.subject,
+      occurredAt: input.occurredAt ?? now,
+      payload: input.payload,
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+
+    this.store.activities.unshift(activity);
+    this.enqueueEvent("activity.logged", "activity", activity.id, principal, now, {
+      parent: activity.parent,
+      type: activity.type
+    });
+    return activity;
   }
 
   async listCustomFieldDefinitions(tenantId: TenantId): Promise<CustomFieldDefinition[]> {

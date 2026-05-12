@@ -110,6 +110,10 @@ export const openApiDocument = {
     "/v1/notes": {
       post: { summary: "Append note" }
     },
+    "/v1/activities": {
+      get: { summary: "List activities" },
+      post: { summary: "Log activity" }
+    },
     "/v1/custom-fields": {
       get: { summary: "List custom field definitions" },
       post: {
