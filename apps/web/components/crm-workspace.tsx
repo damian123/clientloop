@@ -55,6 +55,8 @@ type CustomFieldRecord = Account | Contact | Lead | Opportunity;
 type CustomFieldValueDrafts = Record<string, Record<string, string>>;
 type SelectedRecordRef =
   | { entityType: "account"; id: string }
+  | { entityType: "contact"; id: string }
+  | { entityType: "lead"; id: string }
   | { entityType: "opportunity"; id: string };
 
 const stageLabels: Record<OpportunityStage, string> = {
@@ -138,9 +140,19 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       return account ? { entityType: "account" as const, record: account } : null;
     }
 
+    if (selectedRecord.entityType === "contact") {
+      const contact = contactsById.get(selectedRecord.id);
+      return contact ? { entityType: "contact" as const, record: contact } : null;
+    }
+
+    if (selectedRecord.entityType === "lead") {
+      const lead = leads.find((candidate) => candidate.id === selectedRecord.id);
+      return lead ? { entityType: "lead" as const, record: lead } : null;
+    }
+
     const opportunity = opportunities.find((candidate) => candidate.id === selectedRecord.id);
     return opportunity ? { entityType: "opportunity" as const, record: opportunity } : null;
-  }, [accountsById, opportunities, selectedRecord]);
+  }, [accountsById, contactsById, leads, opportunities, selectedRecord]);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredOpportunities = useMemo(
@@ -728,6 +740,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 leads={filteredLeads}
                 message={leadMessage}
                 onConvert={convertLeadToOpportunity}
+                onOpenRecord={(lead) => setSelectedRecord({ entityType: "lead", id: lead.id })}
               />
             ) : null}
 
@@ -743,7 +756,14 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             ) : null}
 
             {viewMode === "contacts" ? (
-              <ContactsView contacts={filteredContacts} accountsById={accountsById} />
+              <ContactsView
+                accountsById={accountsById}
+                contacts={filteredContacts}
+                customFieldDefinitions={customFieldsByEntity.get("contact") ?? []}
+                onOpenRecord={(contact) =>
+                  setSelectedRecord({ entityType: "contact", id: contact.id })
+                }
+              />
             ) : null}
 
             {viewMode === "data" ? (
@@ -774,6 +794,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 customFieldMessage={customFieldMessage}
                 customFieldValueDrafts={customFieldValueDrafts}
                 entityType={selectedRecordDetail.entityType}
+                leads={leads}
                 opportunities={opportunities}
                 record={selectedRecordDetail.record}
                 savingCustomFieldRecordId={savingCustomFieldRecordId}
@@ -805,12 +826,14 @@ function LeadsView({
   convertingLeadId,
   leads,
   message,
-  onConvert
+  onConvert,
+  onOpenRecord
 }: {
   convertingLeadId: string | null;
   leads: Lead[];
   message: string;
   onConvert: (lead: Lead) => void;
+  onOpenRecord: (lead: Lead) => void;
 }) {
   return (
     <>
@@ -837,7 +860,9 @@ function LeadsView({
               return (
                 <tr key={lead.id}>
                   <td>
-                    <strong>{lead.contactName}</strong>
+                    <button className="link-button" onClick={() => onOpenRecord(lead)}>
+                      {lead.contactName}
+                    </button>
                     <p className="table-subtext">{lead.email ?? ""}</p>
                   </td>
                   <td>{lead.companyName ?? ""}</td>
@@ -846,13 +871,18 @@ function LeadsView({
                     <StatusPill value={lead.status} />
                   </td>
                   <td>
-                    <button
-                      className="table-action"
-                      disabled={!canConvert || convertingLeadId === lead.id}
-                      onClick={() => onConvert(lead)}
-                    >
-                      <ArrowRight size={16} /> Convert
-                    </button>
+                    <div className="card-actions">
+                      <button className="table-action" onClick={() => onOpenRecord(lead)}>
+                        Open
+                      </button>
+                      <button
+                        className="table-action"
+                        disabled={!canConvert || convertingLeadId === lead.id}
+                        onClick={() => onConvert(lead)}
+                      >
+                        <ArrowRight size={16} /> Convert
+                      </button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -1038,10 +1068,14 @@ function AccountsView({
 
 function ContactsView({
   contacts,
-  accountsById
+  accountsById,
+  customFieldDefinitions,
+  onOpenRecord
 }: {
   contacts: Contact[];
   accountsById: Map<string, Account>;
+  customFieldDefinitions: CustomFieldDefinition[];
+  onOpenRecord: (contact: Contact) => void;
 }) {
   return (
     <>
@@ -1059,15 +1093,33 @@ function ContactsView({
               <th scope="col">Email</th>
               <th scope="col">Phone</th>
               <th scope="col">Account</th>
+              {customFieldDefinitions.map((definition) => (
+                <th scope="col" key={definition.id}>{definition.label}</th>
+              ))}
+              <th scope="col">Detail</th>
             </tr>
           </thead>
           <tbody>
             {contacts.map((contact) => (
               <tr key={contact.id}>
-                <td>{contact.firstName} {contact.lastName}</td>
+                <td>
+                  <button className="link-button" onClick={() => onOpenRecord(contact)}>
+                    {contact.firstName} {contact.lastName}
+                  </button>
+                </td>
                 <td>{contact.email ?? ""}</td>
                 <td>{contact.phone ?? ""}</td>
                 <td>{contact.accountId ? accountsById.get(contact.accountId)?.name ?? "" : ""}</td>
+                {customFieldDefinitions.map((definition) => (
+                  <td key={definition.id}>
+                    {formatCustomFieldValue(contact.customFields[definition.key])}
+                  </td>
+                ))}
+                <td>
+                  <button className="table-action" onClick={() => onOpenRecord(contact)}>
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1324,6 +1376,7 @@ function RecordDetailPanel({
   customFieldMessage,
   customFieldValueDrafts,
   entityType,
+  leads,
   opportunities,
   record,
   savingCustomFieldRecordId,
@@ -1335,9 +1388,10 @@ function RecordDetailPanel({
   customFieldDefinitions: CustomFieldDefinition[];
   customFieldMessage: string;
   customFieldValueDrafts: CustomFieldValueDrafts;
-  entityType: "account" | "opportunity";
+  entityType: RecordEntityType;
+  leads: Lead[];
   opportunities: Opportunity[];
-  record: Account | Opportunity;
+  record: CustomFieldRecord;
   savingCustomFieldRecordId: string | null;
   onClose: () => void;
   onCustomFieldDraftChange: (
@@ -1358,6 +1412,19 @@ function RecordDetailPanel({
       : [];
   const opportunityAccount =
     entityType === "opportunity" ? accountsById.get((record as Opportunity).accountId) : undefined;
+  const contactAccount =
+    entityType === "contact" && (record as Contact).accountId
+      ? accountsById.get((record as Contact).accountId ?? "")
+      : undefined;
+  const contactOpportunities =
+    entityType === "contact"
+      ? opportunities.filter((opportunity) => opportunity.primaryContactId === record.id)
+      : [];
+  const convertedLeadOpportunity =
+    entityType === "lead" && (record as Lead).convertedOpportunityId
+      ? opportunities.find((opportunity) => opportunity.id === (record as Lead).convertedOpportunityId)
+      : undefined;
+  const matchingLead = entityType === "lead" ? leads.find((lead) => lead.id === record.id) : undefined;
   const pipelineTotal = relatedOpportunities.reduce(
     (sum, opportunity) => sum + (opportunity.amount ?? 0),
     0
@@ -1383,14 +1450,31 @@ function RecordDetailPanel({
             <DetailMetric label="Open pipeline" value={formatCurrency(pipelineTotal)} />
             <DetailMetric label="Opportunities" value={String(relatedOpportunities.length)} />
           </>
-        ) : (
+        ) : null}
+        {entityType === "contact" ? (
+          <>
+            <DetailMetric label="Account" value={contactAccount?.name ?? ""} />
+            <DetailMetric label="Email" value={(record as Contact).email ?? ""} />
+            <DetailMetric label="Phone" value={(record as Contact).phone ?? ""} />
+            <DetailMetric label="Opportunities" value={String(contactOpportunities.length)} />
+          </>
+        ) : null}
+        {entityType === "lead" ? (
+          <>
+            <DetailMetric label="Status" value={(record as Lead).status} />
+            <DetailMetric label="Company" value={(record as Lead).companyName ?? ""} />
+            <DetailMetric label="Source" value={(record as Lead).source} />
+            <DetailMetric label="Converted" value={formatDate((record as Lead).convertedAt)} />
+          </>
+        ) : null}
+        {entityType === "opportunity" ? (
           <>
             <DetailMetric label="Stage" value={(record as Opportunity).stage} />
             <DetailMetric label="Account" value={opportunityAccount?.name ?? ""} />
             <DetailMetric label="Amount" value={formatCurrency((record as Opportunity).amount ?? 0)} />
             <DetailMetric label="Close" value={formatDate((record as Opportunity).expectedCloseDate)} />
           </>
-        )}
+        ) : null}
       </div>
 
       <section className="detail-section" aria-label="Custom field values">
@@ -1430,6 +1514,51 @@ function RecordDetailPanel({
             {relatedOpportunities.length === 0 ? (
               <p className="detail-empty">No opportunities</p>
             ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {entityType === "contact" ? (
+        <section className="detail-section" aria-label="Contact opportunities">
+          <div>
+            <p className="eyebrow">Pipeline</p>
+            <h4>Contact opportunities</h4>
+          </div>
+          <div className="detail-list">
+            {contactOpportunities.map((opportunity) => (
+              <div className="detail-list-row" key={opportunity.id}>
+                <strong>{opportunity.name}</strong>
+                <span>{stageLabels[opportunity.stage]}</span>
+                <span>{formatCurrency(opportunity.amount ?? 0)}</span>
+              </div>
+            ))}
+            {contactOpportunities.length === 0 ? (
+              <p className="detail-empty">No linked opportunities</p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
+      {entityType === "lead" && matchingLead ? (
+        <section className="detail-section" aria-label="Lead conversion">
+          <div>
+            <p className="eyebrow">Conversion</p>
+            <h4>Converted records</h4>
+          </div>
+          <div className="detail-list">
+            {convertedLeadOpportunity ? (
+              <div className="detail-list-row">
+                <strong>{convertedLeadOpportunity.name}</strong>
+                <span>{stageLabels[convertedLeadOpportunity.stage]}</span>
+                <span>{formatCurrency(convertedLeadOpportunity.amount ?? 0)}</span>
+              </div>
+            ) : (
+              <p className="detail-empty">
+                {matchingLead.status === "converted"
+                  ? "Converted opportunity is not in the current workspace data"
+                  : "Not converted yet"}
+              </p>
+            )}
           </div>
         </section>
       ) : null}

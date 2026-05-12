@@ -13,3 +13,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0009-custom-field-management.md](./0009-custom-field-management.md)
 - [0010-custom-field-value-editing.md](./0010-custom-field-value-editing.md)
 - [0011-record-detail-panels.md](./0011-record-detail-panels.md)
+- [0012-contact-lead-detail-panels.md](./0012-contact-lead-detail-panels.md)
