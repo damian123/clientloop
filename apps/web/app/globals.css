@@ -857,6 +857,16 @@ tr:last-child td {
   gap: 6px;
 }
 
+.timeline-filter {
+  justify-content: flex-start;
+}
+
+.timeline-filter button {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 .timeline-record-meta {
   display: flex;
   flex-wrap: wrap;

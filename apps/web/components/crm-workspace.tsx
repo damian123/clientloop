@@ -59,6 +59,7 @@ type CustomFieldDraft = {
 };
 type CustomFieldRecord = Account | Contact | Lead | Opportunity;
 type CustomFieldValueDrafts = Record<string, Record<string, string>>;
+type TimelineFilter = "all" | "activity" | "note" | "task";
 type SelectedRecordRef =
   | { entityType: "account"; id: string }
   | { entityType: "contact"; id: string }
@@ -1633,6 +1634,7 @@ function RecordDetailPanel({
     ...recordActivities.map((activity) => ({
       id: activity.id,
       at: activity.occurredAt,
+      category: "activity" as const,
       kind: activity.type,
       label: "Activity",
       title: activity.subject,
@@ -1641,6 +1643,7 @@ function RecordDetailPanel({
     ...recordNotes.map((note) => ({
       id: note.id,
       at: note.createdAt,
+      category: "note" as const,
       kind: "note",
       label: "Note",
       title: note.body,
@@ -1649,12 +1652,18 @@ function RecordDetailPanel({
     ...recordTasks.map((task) => ({
       id: task.id,
       at: task.dueAt ?? task.createdAt,
+      category: "task" as const,
       kind: "task",
       label: "Task",
       title: task.title,
       detail: `${task.status.replace("_", " ")} / ${task.priority}`
     }))
   ].sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime());
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
+  const filteredTimelineItems =
+    timelineFilter === "all"
+      ? recordTimelineItems
+      : recordTimelineItems.filter((item) => item.category === timelineFilter);
   const [taskDraft, setTaskDraft] = useState({
     title: "",
     description: "",
@@ -1688,6 +1697,7 @@ function RecordDetailPanel({
       subject: ""
     });
     setActivityMessage("");
+    setTimelineFilter("all");
   }, [entityType, record.id]);
 
   async function submitTask() {
@@ -1959,8 +1969,19 @@ function RecordDetailPanel({
           <p className="eyebrow">History</p>
           <h4>Record timeline</h4>
         </div>
+        <div className="segmented timeline-filter" aria-label="Timeline filter">
+          {(["all", "activity", "note", "task"] as const).map((filter) => (
+            <button
+              className={timelineFilter === filter ? "selected" : ""}
+              key={filter}
+              onClick={() => setTimelineFilter(filter)}
+            >
+              {timelineFilterLabel(filter)}
+            </button>
+          ))}
+        </div>
         <div className="detail-list">
-          {recordTimelineItems.slice(0, 6).map((item) => (
+          {filteredTimelineItems.slice(0, 6).map((item) => (
             <div className="detail-list-row timeline-record-row" key={`${item.kind}:${item.id}`}>
               <div className="timeline-record-meta">
                 <StatusPill value={item.label} />
@@ -1970,8 +1991,8 @@ function RecordDetailPanel({
               <span>{item.detail}</span>
             </div>
           ))}
-          {recordTimelineItems.length === 0 ? (
-            <p className="detail-empty">No timeline entries yet</p>
+          {filteredTimelineItems.length === 0 ? (
+            <p className="detail-empty">{timelineEmptyMessage(timelineFilter)}</p>
           ) : null}
         </div>
       </section>
@@ -2583,6 +2604,23 @@ function formatDateTime(value: string | null | undefined) {
     hour: "numeric",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function timelineFilterLabel(filter: TimelineFilter) {
+  switch (filter) {
+    case "activity":
+      return "Activities";
+    case "note":
+      return "Notes";
+    case "task":
+      return "Tasks";
+    default:
+      return "All";
+  }
+}
+
+function timelineEmptyMessage(filter: TimelineFilter) {
+  return filter === "all" ? "No timeline entries yet" : `No ${timelineFilterLabel(filter).toLowerCase()} yet`;
 }
 
 function errorSummary(error: unknown) {
