@@ -60,6 +60,13 @@ type CustomFieldDraft = {
 type CustomFieldRecord = Account | Contact | Lead | Opportunity;
 type CustomFieldValueDrafts = Record<string, Record<string, string>>;
 type TimelineFilter = "all" | "activity" | "note" | "task";
+type ActivityPayloadDraft = {
+  outcome: string;
+  durationMinutes: string;
+  attendees: string;
+  emailDirection: "outbound" | "inbound";
+  location: string;
+};
 type SelectedRecordRef =
   | { entityType: "account"; id: string }
   | { entityType: "contact"; id: string }
@@ -1638,7 +1645,7 @@ function RecordDetailPanel({
       kind: activity.type,
       label: "Activity",
       title: activity.subject,
-      detail: activity.type
+      detail: activityPayloadSummary(activity)
     })),
     ...recordNotes.map((note) => ({
       id: note.id,
@@ -1677,7 +1684,8 @@ function RecordDetailPanel({
   const [savingNote, setSavingNote] = useState(false);
   const [activityDraft, setActivityDraft] = useState({
     type: "call" as CRMActivity["type"],
-    subject: ""
+    subject: "",
+    payload: emptyActivityPayloadDraft()
   });
   const [activityMessage, setActivityMessage] = useState("");
   const [savingActivity, setSavingActivity] = useState(false);
@@ -1694,7 +1702,8 @@ function RecordDetailPanel({
     setNoteMessage("");
     setActivityDraft({
       type: "call",
-      subject: ""
+      subject: "",
+      payload: emptyActivityPayloadDraft()
     });
     setActivityMessage("");
     setTimelineFilter("all");
@@ -1767,11 +1776,12 @@ function RecordDetailPanel({
         parent: { type: entityType, id: record.id },
         type: activityDraft.type,
         subject,
-        payload: {}
+        payload: buildActivityPayload(activityDraft.type, activityDraft.payload)
       });
       setActivityDraft({
         type: "call",
-        subject: ""
+        subject: "",
+        payload: emptyActivityPayloadDraft()
       });
       setActivityMessage("Activity logged");
     } catch (error) {
@@ -1932,7 +1942,8 @@ function RecordDetailPanel({
                 onChange={(event) =>
                   setActivityDraft((current) => ({
                     ...current,
-                    type: event.target.value as CRMActivity["type"]
+                    type: event.target.value as CRMActivity["type"],
+                    payload: emptyActivityPayloadDraft()
                   }))
                 }
               >
@@ -1953,6 +1964,11 @@ function RecordDetailPanel({
               />
             </label>
           </div>
+          <ActivityPayloadFields
+            draft={activityDraft.payload}
+            type={activityDraft.type}
+            onChange={(payload) => setActivityDraft((current) => ({ ...current, payload }))}
+          />
           <button
             className="table-action"
             disabled={savingActivity || activityDraft.subject.trim().length === 0}
@@ -2210,7 +2226,7 @@ function Timeline({
             <div className="timeline-dot" aria-hidden="true" />
             <div>
               <h4>{activity.subject}</h4>
-              <p>{parentLabel(activity)}</p>
+              <p>{[parentLabel(activity), activityPayloadSummary(activity)].filter(Boolean).join(" / ")}</p>
               <span>{formatDate(activity.occurredAt)}</span>
             </div>
           </article>
@@ -2218,6 +2234,100 @@ function Timeline({
       </div>
     </section>
   );
+}
+
+function ActivityPayloadFields({
+  draft,
+  type,
+  onChange
+}: {
+  draft: ActivityPayloadDraft;
+  type: CRMActivity["type"];
+  onChange: (draft: ActivityPayloadDraft) => void;
+}) {
+  const update = (patch: Partial<ActivityPayloadDraft>) => onChange({ ...draft, ...patch });
+
+  if (type === "call") {
+    return (
+      <div className="activity-payload-grid">
+        <label>
+          <span>Outcome</span>
+          <input
+            value={draft.outcome}
+            onChange={(event) => update({ outcome: event.target.value })}
+            placeholder="Qualified, left voicemail, no answer"
+          />
+        </label>
+        <label>
+          <span>Duration</span>
+          <input
+            inputMode="numeric"
+            value={draft.durationMinutes}
+            onChange={(event) => update({ durationMinutes: event.target.value })}
+            placeholder="Minutes"
+          />
+        </label>
+      </div>
+    );
+  }
+
+  if (type === "email") {
+    return (
+      <div className="activity-payload-grid">
+        <label>
+          <span>Direction</span>
+          <select
+            value={draft.emailDirection}
+            onChange={(event) =>
+              update({ emailDirection: event.target.value as ActivityPayloadDraft["emailDirection"] })
+            }
+          >
+            <option value="outbound">Outbound</option>
+            <option value="inbound">Inbound</option>
+          </select>
+        </label>
+        <label>
+          <span>Outcome</span>
+          <input
+            value={draft.outcome}
+            onChange={(event) => update({ outcome: event.target.value })}
+            placeholder="Replied, booked, waiting"
+          />
+        </label>
+      </div>
+    );
+  }
+
+  if (type === "meeting" || type === "event") {
+    return (
+      <div className="activity-payload-grid">
+        <label>
+          <span>{type === "meeting" ? "Attendees" : "Guests"}</span>
+          <input
+            value={draft.attendees}
+            onChange={(event) => update({ attendees: event.target.value })}
+            placeholder="Comma-separated names"
+          />
+        </label>
+        <label>
+          <span>{type === "meeting" ? "Duration" : "Location"}</span>
+          <input
+            value={type === "meeting" ? draft.durationMinutes : draft.location}
+            onChange={(event) =>
+              update(
+                type === "meeting"
+                  ? { durationMinutes: event.target.value }
+                  : { location: event.target.value }
+              )
+            }
+            placeholder={type === "meeting" ? "Minutes" : "Venue or channel"}
+          />
+        </label>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
@@ -2621,6 +2731,83 @@ function timelineFilterLabel(filter: TimelineFilter) {
 
 function timelineEmptyMessage(filter: TimelineFilter) {
   return filter === "all" ? "No timeline entries yet" : `No ${timelineFilterLabel(filter).toLowerCase()} yet`;
+}
+
+function emptyActivityPayloadDraft(): ActivityPayloadDraft {
+  return {
+    outcome: "",
+    durationMinutes: "",
+    attendees: "",
+    emailDirection: "outbound",
+    location: ""
+  };
+}
+
+function buildActivityPayload(
+  type: CRMActivity["type"],
+  draft: ActivityPayloadDraft
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  const outcome = draft.outcome.trim();
+  const durationMinutes = Number.parseInt(draft.durationMinutes, 10);
+  const attendees = draft.attendees
+    .split(",")
+    .map((attendee) => attendee.trim())
+    .filter(Boolean);
+  const location = draft.location.trim();
+
+  if (outcome) {
+    payload.outcome = outcome;
+  }
+
+  if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+    payload.durationMinutes = durationMinutes;
+  }
+
+  if (type === "email") {
+    payload.direction = draft.emailDirection;
+  }
+
+  if ((type === "meeting" || type === "event") && attendees.length > 0) {
+    payload.attendees = attendees;
+  }
+
+  if (type === "event" && location) {
+    payload.location = location;
+  }
+
+  return payload;
+}
+
+function activityPayloadSummary(activity: CRMActivity) {
+  const details: string[] = [activity.type];
+  const { payload } = activity;
+
+  if (typeof payload.direction === "string") {
+    details.push(payload.direction);
+  }
+
+  if (typeof payload.outcome === "string") {
+    details.push(payload.outcome);
+  }
+
+  if (typeof payload.disposition === "string") {
+    details.push(payload.disposition);
+  }
+
+  if (typeof payload.durationMinutes === "number") {
+    details.push(`${payload.durationMinutes} min`);
+  }
+
+  if (Array.isArray(payload.attendees) && payload.attendees.length > 0) {
+    details.push(`${payload.attendees.length} attendees`);
+  }
+
+  if (typeof payload.location === "string") {
+    details.push(payload.location);
+  }
+
+  return details.join(" / ");
 }
 
 function errorSummary(error: unknown) {

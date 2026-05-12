@@ -829,6 +829,12 @@ tr:last-child td {
   gap: 8px;
 }
 
+.activity-payload-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .detail-list {
   display: grid;
   gap: 8px;
@@ -1024,7 +1030,8 @@ tr:last-child td {
   }
 
   .field-form,
-  .definition-row {
+  .definition-row,
+  .activity-payload-grid {
     grid-template-columns: 1fr;
   }
 
