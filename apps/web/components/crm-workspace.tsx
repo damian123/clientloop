@@ -18,6 +18,7 @@ import {
   UserRound,
   X
 } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ContactImportPreview,
@@ -72,8 +73,13 @@ const contactCsvPlaceholder = `firstName,lastName,email,phone
 Jordan,Rivera,jordan@example.com,+1 415 555 0199`;
 
 export function CRMWorkspace({ initialDashboard }: { initialDashboard: DashboardResponse }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  const [viewMode, setViewMode] = useState<ViewMode>("pipeline");
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => parseViewMode(searchParams.get("view")) ?? "pipeline"
+  );
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<OpportunityStage | "all">("all");
   const [accounts, setAccounts] = useState<Account[]>(initialDashboard.accounts);
@@ -98,7 +104,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [customFieldValueDrafts, setCustomFieldValueDrafts] = useState<CustomFieldValueDrafts>({});
   const [savingCustomFieldRecordId, setSavingCustomFieldRecordId] = useState<string | null>(null);
   const [customFieldMessage, setCustomFieldMessage] = useState("");
-  const [selectedRecord, setSelectedRecord] = useState<SelectedRecordRef | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<SelectedRecordRef | null>(() =>
+    parseSelectedRecord(searchParams.get("record"))
+  );
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
   const [leadMessage, setLeadMessage] = useState("");
@@ -109,6 +117,61 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [sessionError, setSessionError] = useState("");
   const sessionPromiseRef = useRef<Promise<SessionResponse | null> | null>(null);
+
+  useEffect(() => {
+    const nextView = parseViewMode(searchParams.get("view")) ?? "pipeline";
+    const nextRecord = parseSelectedRecord(searchParams.get("record"));
+    setViewMode(nextView);
+    setSelectedRecord((current) =>
+      sameSelectedRecord(current, nextRecord) ? current : nextRecord
+    );
+  }, [searchParams]);
+
+  const replaceWorkspaceRoute = useCallback(
+    (updates: { view?: ViewMode; record?: SelectedRecordRef | null }) => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+
+      if (updates.view) {
+        nextParams.set("view", updates.view);
+      }
+
+      if ("record" in updates) {
+        if (updates.record) {
+          nextParams.set("record", serializeSelectedRecord(updates.record));
+        } else {
+          nextParams.delete("record");
+        }
+      }
+
+      const queryString = nextParams.toString();
+      router.replace(queryString ? `${pathname}?${queryString}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  const changeViewMode = useCallback(
+    (nextViewMode: ViewMode) => {
+      setViewMode(nextViewMode);
+      replaceWorkspaceRoute({ view: nextViewMode });
+    },
+    [replaceWorkspaceRoute]
+  );
+
+  const openRecordDetail = useCallback(
+    (record: SelectedRecordRef, nextViewMode?: ViewMode) => {
+      if (nextViewMode) {
+        setViewMode(nextViewMode);
+      }
+      setSelectedRecord(record);
+      replaceWorkspaceRoute(nextViewMode ? { view: nextViewMode, record } : { record });
+    },
+    [replaceWorkspaceRoute]
+  );
+
+  const closeRecordDetail = useCallback(() => {
+    setSelectedRecord(null);
+    replaceWorkspaceRoute({ record: null });
+  }, [replaceWorkspaceRoute]);
 
   const accountsById = useMemo(
     () => new Map(accounts.map((account) => [account.id, account])),
@@ -644,31 +707,31 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
         <nav className="nav-list" aria-label="Primary">
           <button
             className={viewMode === "pipeline" ? "active" : ""}
-            onClick={() => setViewMode("pipeline")}
+            onClick={() => changeViewMode("pipeline")}
           >
             <CircleDollarSign size={18} /> Pipeline
           </button>
           <button
             className={viewMode === "leads" ? "active" : ""}
-            onClick={() => setViewMode("leads")}
+            onClick={() => changeViewMode("leads")}
           >
             <UserPlus size={18} /> Leads
           </button>
           <button
             className={viewMode === "accounts" ? "active" : ""}
-            onClick={() => setViewMode("accounts")}
+            onClick={() => changeViewMode("accounts")}
           >
             <Building2 size={18} /> Accounts
           </button>
           <button
             className={viewMode === "contacts" ? "active" : ""}
-            onClick={() => setViewMode("contacts")}
+            onClick={() => changeViewMode("contacts")}
           >
             <UserRound size={18} /> Contacts
           </button>
           <button
             className={viewMode === "data" ? "active" : ""}
-            onClick={() => setViewMode("data")}
+            onClick={() => changeViewMode("data")}
           >
             <Database size={18} /> Data
           </button>
@@ -728,7 +791,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 syncingId={syncingId}
                 onAdvance={advanceOpportunity}
                 onOpenRecord={(opportunity) =>
-                  setSelectedRecord({ entityType: "opportunity", id: opportunity.id })
+                  openRecordDetail(
+                    { entityType: "opportunity", id: opportunity.id },
+                    "pipeline"
+                  )
                 }
                 onStageFilter={setStageFilter}
               />
@@ -740,7 +806,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 leads={filteredLeads}
                 message={leadMessage}
                 onConvert={convertLeadToOpportunity}
-                onOpenRecord={(lead) => setSelectedRecord({ entityType: "lead", id: lead.id })}
+                onOpenRecord={(lead) =>
+                  openRecordDetail({ entityType: "lead", id: lead.id }, "leads")
+                }
               />
             ) : null}
 
@@ -750,7 +818,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 customFieldDefinitions={customFieldsByEntity.get("account") ?? []}
                 opportunities={opportunities}
                 onOpenRecord={(account) =>
-                  setSelectedRecord({ entityType: "account", id: account.id })
+                  openRecordDetail({ entityType: "account", id: account.id }, "accounts")
                 }
               />
             ) : null}
@@ -761,7 +829,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 contacts={filteredContacts}
                 customFieldDefinitions={customFieldsByEntity.get("contact") ?? []}
                 onOpenRecord={(contact) =>
-                  setSelectedRecord({ entityType: "contact", id: contact.id })
+                  openRecordDetail({ entityType: "contact", id: contact.id }, "contacts")
                 }
               />
             ) : null}
@@ -798,7 +866,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 opportunities={opportunities}
                 record={selectedRecordDetail.record}
                 savingCustomFieldRecordId={savingCustomFieldRecordId}
-                onClose={() => setSelectedRecord(null)}
+                onClose={closeRecordDetail}
                 onCustomFieldDraftChange={updateCustomFieldDraftValue}
                 onSaveCustomFields={saveRecordCustomFields}
               />
@@ -1842,6 +1910,53 @@ function viewModeTitle(viewMode: ViewMode) {
     case "data":
       return "Data";
   }
+}
+
+function parseViewMode(value: string | null): ViewMode | null {
+  if (
+    value === "pipeline" ||
+    value === "leads" ||
+    value === "accounts" ||
+    value === "contacts" ||
+    value === "data"
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
+function parseSelectedRecord(value: string | null): SelectedRecordRef | null {
+  if (!value) {
+    return null;
+  }
+
+  const [entityType, id] = value.split(":");
+  if (!id) {
+    return null;
+  }
+
+  if (
+    entityType === "account" ||
+    entityType === "contact" ||
+    entityType === "lead" ||
+    entityType === "opportunity"
+  ) {
+    return { entityType, id };
+  }
+
+  return null;
+}
+
+function serializeSelectedRecord(record: SelectedRecordRef) {
+  return `${record.entityType}:${record.id}`;
+}
+
+function sameSelectedRecord(
+  left: SelectedRecordRef | null,
+  right: SelectedRecordRef | null
+) {
+  return left?.entityType === right?.entityType && left?.id === right?.id;
 }
 
 function customFieldDefinitionInput(
