@@ -971,6 +971,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 opportunities={opportunities}
                 record={selectedRecordDetail.record}
                 savingCustomFieldRecordId={savingCustomFieldRecordId}
+                tasks={tasks}
                 onClose={closeRecordDetail}
                 onAppendNote={appendRecordNote}
                 onCreateActivity={logRecordActivity}
@@ -1560,6 +1561,7 @@ function RecordDetailPanel({
   opportunities,
   record,
   savingCustomFieldRecordId,
+  tasks,
   onClose,
   onAppendNote,
   onCreateActivity,
@@ -1578,6 +1580,7 @@ function RecordDetailPanel({
   opportunities: Opportunity[];
   record: CustomFieldRecord;
   savingCustomFieldRecordId: string | null;
+  tasks: Task[];
   onClose: () => void;
   onAppendNote: (input: AppendNoteInput) => Promise<Note>;
   onCreateActivity: (input: CreateActivityInput) => Promise<CRMActivity>;
@@ -1623,6 +1626,35 @@ function RecordDetailPanel({
   const recordActivities = activities.filter(
     (activity) => activity.parent.type === entityType && activity.parent.id === record.id
   );
+  const recordTasks = tasks.filter(
+    (task) => task.parent?.type === entityType && task.parent.id === record.id
+  );
+  const recordTimelineItems = [
+    ...recordActivities.map((activity) => ({
+      id: activity.id,
+      at: activity.occurredAt,
+      kind: activity.type,
+      label: "Activity",
+      title: activity.subject,
+      detail: activity.type
+    })),
+    ...recordNotes.map((note) => ({
+      id: note.id,
+      at: note.createdAt,
+      kind: "note",
+      label: "Note",
+      title: note.body,
+      detail: note.bodyFormat.replace("_", " ")
+    })),
+    ...recordTasks.map((task) => ({
+      id: task.id,
+      at: task.dueAt ?? task.createdAt,
+      kind: "task",
+      label: "Task",
+      title: task.title,
+      detail: `${task.status.replace("_", " ")} / ${task.priority}`
+    }))
+  ].sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime());
   const [taskDraft, setTaskDraft] = useState({
     title: "",
     description: "",
@@ -1874,17 +1906,6 @@ function RecordDetailPanel({
           </button>
         </div>
         {noteMessage ? <p className="data-message">{noteMessage}</p> : null}
-        <div className="detail-list">
-          {recordNotes.slice(0, 4).map((note) => (
-            <div className="detail-list-row" key={note.id}>
-              <strong>{formatDateTime(note.createdAt)}</strong>
-              <span>{note.body}</span>
-            </div>
-          ))}
-          {recordNotes.length === 0 ? (
-            <p className="detail-empty">No notes yet</p>
-          ) : null}
-        </div>
       </section>
 
       <section className="detail-section" aria-label="Log activity">
@@ -1931,16 +1952,26 @@ function RecordDetailPanel({
           </button>
         </div>
         {activityMessage ? <p className="data-message">{activityMessage}</p> : null}
+      </section>
+
+      <section className="detail-section" aria-label="Record timeline">
+        <div>
+          <p className="eyebrow">History</p>
+          <h4>Record timeline</h4>
+        </div>
         <div className="detail-list">
-          {recordActivities.slice(0, 4).map((activity) => (
-            <div className="detail-list-row" key={activity.id}>
-              <strong>{activity.subject}</strong>
-              <span>{activity.type}</span>
-              <span>{formatDateTime(activity.occurredAt)}</span>
+          {recordTimelineItems.slice(0, 6).map((item) => (
+            <div className="detail-list-row timeline-record-row" key={`${item.kind}:${item.id}`}>
+              <div className="timeline-record-meta">
+                <StatusPill value={item.label} />
+                <span>{formatDateTime(item.at)}</span>
+              </div>
+              <strong>{item.title}</strong>
+              <span>{item.detail}</span>
             </div>
           ))}
-          {recordActivities.length === 0 ? (
-            <p className="detail-empty">No activities yet</p>
+          {recordTimelineItems.length === 0 ? (
+            <p className="detail-empty">No timeline entries yet</p>
           ) : null}
         </div>
       </section>

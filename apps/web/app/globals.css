@@ -853,6 +853,22 @@ tr:last-child td {
   font-size: 12px;
 }
 
+.timeline-record-row {
+  gap: 6px;
+}
+
+.timeline-record-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.timeline-record-meta span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .detail-empty {
   margin: 0;
 }
