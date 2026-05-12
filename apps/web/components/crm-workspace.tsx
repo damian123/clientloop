@@ -21,6 +21,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
+  AppendNoteInput,
   ContactImportPreview,
   CreateTaskInput,
   CreateCustomFieldDefinitionInput,
@@ -35,6 +36,7 @@ import type {
   CustomFieldPrimitive,
   CustomFieldType,
   Lead,
+  Note,
   Opportunity,
   OpportunityStage,
   RecordEntityType,
@@ -90,6 +92,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   );
   const [contacts, setContacts] = useState<Contact[]>(initialDashboard.contacts);
   const [tasks, setTasks] = useState<Task[]>(initialDashboard.tasks);
+  const [notes, setNotes] = useState<Note[]>(initialDashboard.notes);
   const [customFieldDefinitions, setCustomFieldDefinitions] = useState<CustomFieldDefinition[]>(
     initialDashboard.customFieldDefinitions
   );
@@ -464,6 +467,36 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     const task = await client.createTask(input);
     setTasks((current) => [task, ...current]);
     return task;
+  }
+
+  async function appendRecordNote(input: AppendNoteInput) {
+    if (!apiBaseUrl) {
+      const now = new Date().toISOString();
+      const note: Note = {
+        id: crypto.randomUUID(),
+        parent: input.parent,
+        body: input.body,
+        bodyFormat: input.bodyFormat,
+        tenantId: seedTenantId,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: seedManagerId,
+        updatedBy: seedManagerId,
+        version: 1,
+        archivedAt: null
+      };
+      setNotes((current) => [note, ...current]);
+      return note;
+    }
+
+    const client = await authenticatedClient();
+    if (!client) {
+      throw new Error("Session is unavailable");
+    }
+
+    const note = await client.appendNote(input);
+    setNotes((current) => [note, ...current]);
+    return note;
   }
 
   async function convertLeadToOpportunity(lead: Lead) {
@@ -898,10 +931,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 customFieldValueDrafts={customFieldValueDrafts}
                 entityType={selectedRecordDetail.entityType}
                 leads={leads}
+                notes={notes}
                 opportunities={opportunities}
                 record={selectedRecordDetail.record}
                 savingCustomFieldRecordId={savingCustomFieldRecordId}
                 onClose={closeRecordDetail}
+                onAppendNote={appendRecordNote}
                 onCreateTask={createFollowUpTask}
                 onCustomFieldDraftChange={updateCustomFieldDraftValue}
                 onSaveCustomFields={saveRecordCustomFields}
@@ -1483,10 +1518,12 @@ function RecordDetailPanel({
   customFieldValueDrafts,
   entityType,
   leads,
+  notes,
   opportunities,
   record,
   savingCustomFieldRecordId,
   onClose,
+  onAppendNote,
   onCreateTask,
   onCustomFieldDraftChange,
   onSaveCustomFields
@@ -1497,10 +1534,12 @@ function RecordDetailPanel({
   customFieldValueDrafts: CustomFieldValueDrafts;
   entityType: RecordEntityType;
   leads: Lead[];
+  notes: Note[];
   opportunities: Opportunity[];
   record: CustomFieldRecord;
   savingCustomFieldRecordId: string | null;
   onClose: () => void;
+  onAppendNote: (input: AppendNoteInput) => Promise<Note>;
   onCreateTask: (input: CreateTaskInput) => Promise<Task>;
   onCustomFieldDraftChange: (
     entityType: RecordEntityType,
@@ -1537,6 +1576,9 @@ function RecordDetailPanel({
     (sum, opportunity) => sum + (opportunity.amount ?? 0),
     0
   );
+  const recordNotes = notes.filter(
+    (note) => note.parent.type === entityType && note.parent.id === record.id
+  );
   const [taskDraft, setTaskDraft] = useState({
     title: "",
     description: "",
@@ -1545,6 +1587,9 @@ function RecordDetailPanel({
   });
   const [taskMessage, setTaskMessage] = useState("");
   const [creatingTask, setCreatingTask] = useState(false);
+  const [noteBody, setNoteBody] = useState("");
+  const [noteMessage, setNoteMessage] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
 
   useEffect(() => {
     setTaskDraft({
@@ -1554,6 +1599,8 @@ function RecordDetailPanel({
       priority: "medium"
     });
     setTaskMessage("");
+    setNoteBody("");
+    setNoteMessage("");
   }, [entityType, record.id]);
 
   async function submitTask() {
@@ -1584,6 +1631,29 @@ function RecordDetailPanel({
       setTaskMessage(errorSummary(error));
     } finally {
       setCreatingTask(false);
+    }
+  }
+
+  async function submitNote() {
+    const body = noteBody.trim();
+    if (!body || savingNote) {
+      return;
+    }
+
+    setSavingNote(true);
+    setNoteMessage("");
+    try {
+      await onAppendNote({
+        parent: { type: entityType, id: record.id },
+        body,
+        bodyFormat: "plain_text"
+      });
+      setNoteBody("");
+      setNoteMessage("Note saved");
+    } catch (error) {
+      setNoteMessage(errorSummary(error));
+    } finally {
+      setSavingNote(false);
     }
   }
 
@@ -1697,6 +1767,42 @@ function RecordDetailPanel({
           </button>
         </div>
         {taskMessage ? <p className="data-message">{taskMessage}</p> : null}
+      </section>
+
+      <section className="detail-section" aria-label="Record notes">
+        <div>
+          <p className="eyebrow">Notes</p>
+          <h4>Record notes</h4>
+        </div>
+        <div className="note-composer">
+          <label>
+            <span>Note</span>
+            <textarea
+              value={noteBody}
+              onChange={(event) => setNoteBody(event.target.value)}
+              placeholder={`Add context for ${recordLabel(record)}`}
+            />
+          </label>
+          <button
+            className="table-action"
+            disabled={savingNote || noteBody.trim().length === 0}
+            onClick={submitNote}
+          >
+            <Plus size={16} /> Save note
+          </button>
+        </div>
+        {noteMessage ? <p className="data-message">{noteMessage}</p> : null}
+        <div className="detail-list">
+          {recordNotes.slice(0, 4).map((note) => (
+            <div className="detail-list-row" key={note.id}>
+              <strong>{formatDateTime(note.createdAt)}</strong>
+              <span>{note.body}</span>
+            </div>
+          ))}
+          {recordNotes.length === 0 ? (
+            <p className="detail-empty">No notes yet</p>
+          ) : null}
+        </div>
       </section>
 
       <section className="detail-section" aria-label="Custom field values">
@@ -2292,6 +2398,19 @@ function formatDate(value: string | null | undefined) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric"
+  }).format(new Date(value));
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
   }).format(new Date(value));
 }
 

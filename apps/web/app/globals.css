@@ -779,17 +779,20 @@ tr:last-child td {
   gap: 10px;
 }
 
-.task-composer {
+.task-composer,
+.note-composer {
   display: grid;
   gap: 8px;
 }
 
-.task-composer label {
+.task-composer label,
+.note-composer label {
   display: grid;
   gap: 4px;
 }
 
-.task-composer label > span {
+.task-composer label > span,
+.note-composer label > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
@@ -797,7 +800,8 @@ tr:last-child td {
 
 .task-composer input,
 .task-composer select,
-.task-composer textarea {
+.task-composer textarea,
+.note-composer textarea {
   width: 100%;
   min-height: 34px;
   border: 1px solid var(--line);
@@ -807,7 +811,8 @@ tr:last-child td {
   color: var(--text);
 }
 
-.task-composer textarea {
+.task-composer textarea,
+.note-composer textarea {
   min-height: 72px;
   padding-top: 8px;
   resize: vertical;
