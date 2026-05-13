@@ -16,6 +16,7 @@ import {
   listQuerySchema,
   searchQuerySchema,
   recordEntityTypeSchema,
+  updateActivitySchema,
   updateCustomFieldValuesSchema,
   updateOpportunitySchema
 } from "@clientloop/contracts";
@@ -167,6 +168,29 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
       createActivitySchema.parse(request.body)
     );
     return reply.code(201).send(activity);
+  });
+
+  app.patch("/v1/activities/:id", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const body = updateActivitySchema.parse(request.body);
+    const ifMatch = request.headers["if-match"];
+
+    if (ifMatch && String(body.expectedVersion) !== String(Array.isArray(ifMatch) ? ifMatch[0] : ifMatch)) {
+      return reply.code(409).send({
+        error: "If-Match header does not match expectedVersion",
+        statusCode: 409
+      });
+    }
+
+    return repository.updateActivity({
+      principal,
+      id: params.id,
+      body,
+      idempotencyKey: Array.isArray(request.headers["idempotency-key"])
+        ? request.headers["idempotency-key"][0]
+        : request.headers["idempotency-key"]
+    });
   });
 
   app.get("/v1/custom-fields", async (request) => {

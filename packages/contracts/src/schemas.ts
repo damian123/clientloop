@@ -42,7 +42,8 @@ export const domainEventTypeSchema = z.enum([
   "task.created",
   "task.completed",
   "note.appended",
-  "activity.logged"
+  "activity.logged",
+  "activity.updated"
 ]);
 
 export const webhookEventTypeSchema = z.union([

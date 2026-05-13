@@ -10,6 +10,7 @@ import {
   Database,
   Download,
   Filter,
+  Pencil,
   Plus,
   RefreshCcw,
   Search,
@@ -28,7 +29,8 @@ import type {
   CreateCustomFieldDefinitionInput,
   DashboardResponse,
   ExportEntity,
-  SessionResponse
+  SessionResponse,
+  UpdateActivityInput
 } from "@clientloop/contracts";
 import type {
   Account,
@@ -66,6 +68,20 @@ type ActivityPayloadDraft = {
   attendees: string;
   emailDirection: "outbound" | "inbound";
   location: string;
+};
+type ActivityEditDraft = {
+  subject: string;
+  payload: ActivityPayloadDraft;
+};
+type TimelineItem = {
+  id: string;
+  at: string;
+  category: Exclude<TimelineFilter, "all">;
+  kind: string;
+  label: string;
+  title: string;
+  detail: string;
+  activity?: CRMActivity;
 };
 type SelectedRecordRef =
   | { entityType: "account"; id: string }
@@ -542,6 +558,38 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     return activity;
   }
 
+  async function updateRecordActivity(id: string, input: UpdateActivityInput) {
+    if (!apiBaseUrl) {
+      const now = new Date().toISOString();
+      const currentActivity = activities.find((activity) => activity.id === id);
+      if (!currentActivity || currentActivity.version !== input.expectedVersion) {
+        throw new Error("Version conflict");
+      }
+      const updatedActivity: CRMActivity = {
+        ...currentActivity,
+        subject: input.subject ?? currentActivity.subject,
+        payload: input.payload ?? currentActivity.payload,
+        updatedAt: now,
+        updatedBy: seedManagerId,
+        version: currentActivity.version + 1
+      };
+
+      setActivities((current) =>
+        current.map((activity) => (activity.id === updatedActivity.id ? updatedActivity : activity))
+      );
+      return updatedActivity;
+    }
+
+    const client = await authenticatedClient();
+    if (!client) {
+      throw new Error("Session is unavailable");
+    }
+
+    const activity = await client.updateActivity(id, input);
+    setActivities((current) => current.map((item) => (item.id === activity.id ? activity : item)));
+    return activity;
+  }
+
   async function convertLeadToOpportunity(lead: Lead) {
     if (!apiBaseUrl || lead.status === "converted" || lead.status === "disqualified") {
       return;
@@ -984,6 +1032,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 onAppendNote={appendRecordNote}
                 onCreateActivity={logRecordActivity}
                 onCreateTask={createFollowUpTask}
+                onUpdateActivity={updateRecordActivity}
                 onCustomFieldDraftChange={updateCustomFieldDraftValue}
                 onSaveCustomFields={saveRecordCustomFields}
               />
@@ -1574,6 +1623,7 @@ function RecordDetailPanel({
   onAppendNote,
   onCreateActivity,
   onCreateTask,
+  onUpdateActivity,
   onCustomFieldDraftChange,
   onSaveCustomFields
 }: {
@@ -1593,6 +1643,7 @@ function RecordDetailPanel({
   onAppendNote: (input: AppendNoteInput) => Promise<Note>;
   onCreateActivity: (input: CreateActivityInput) => Promise<CRMActivity>;
   onCreateTask: (input: CreateTaskInput) => Promise<Task>;
+  onUpdateActivity: (id: string, input: UpdateActivityInput) => Promise<CRMActivity>;
   onCustomFieldDraftChange: (
     entityType: RecordEntityType,
     recordId: string,
@@ -1637,7 +1688,7 @@ function RecordDetailPanel({
   const recordTasks = tasks.filter(
     (task) => task.parent?.type === entityType && task.parent.id === record.id
   );
-  const recordTimelineItems = [
+  const recordTimelineItems: TimelineItem[] = [
     ...recordActivities.map((activity) => ({
       id: activity.id,
       at: activity.occurredAt,
@@ -1645,7 +1696,8 @@ function RecordDetailPanel({
       kind: activity.type,
       label: "Activity",
       title: activity.subject,
-      detail: activityPayloadSummary(activity)
+      detail: activityPayloadSummary(activity),
+      activity
     })),
     ...recordNotes.map((note) => ({
       id: note.id,
@@ -1694,6 +1746,13 @@ function RecordDetailPanel({
   });
   const [activityMessage, setActivityMessage] = useState("");
   const [savingActivity, setSavingActivity] = useState(false);
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [activityEditDraft, setActivityEditDraft] = useState<ActivityEditDraft>(() => ({
+    subject: "",
+    payload: emptyActivityPayloadDraft()
+  }));
+  const [activityEditMessage, setActivityEditMessage] = useState("");
+  const [savingActivityEdit, setSavingActivityEdit] = useState(false);
 
   useEffect(() => {
     setTaskDraft({
@@ -1711,6 +1770,12 @@ function RecordDetailPanel({
       payload: emptyActivityPayloadDraft()
     });
     setActivityMessage("");
+    setEditingActivityId(null);
+    setActivityEditDraft({
+      subject: "",
+      payload: emptyActivityPayloadDraft()
+    });
+    setActivityEditMessage("");
     setTimelineFilter("all");
     setTimelineExpanded(false);
   }, [entityType, record.id]);
@@ -1794,6 +1859,46 @@ function RecordDetailPanel({
       setActivityMessage(errorSummary(error));
     } finally {
       setSavingActivity(false);
+    }
+  }
+
+  function startActivityEdit(activity: CRMActivity) {
+    setEditingActivityId(activity.id);
+    setActivityEditDraft({
+      subject: activity.subject,
+      payload: activityPayloadDraftFromActivity(activity)
+    });
+    setActivityEditMessage("");
+  }
+
+  function cancelActivityEdit() {
+    setEditingActivityId(null);
+    setActivityEditDraft({
+      subject: "",
+      payload: emptyActivityPayloadDraft()
+    });
+    setActivityEditMessage("");
+  }
+
+  async function submitActivityEdit(activity: CRMActivity) {
+    const subject = activityEditDraft.subject.trim();
+    if (!subject || savingActivityEdit) {
+      return;
+    }
+
+    setSavingActivityEdit(true);
+    setActivityEditMessage("");
+    try {
+      await onUpdateActivity(activity.id, {
+        expectedVersion: activity.version,
+        subject,
+        payload: buildActivityPayload(activity.type, activityEditDraft.payload)
+      });
+      cancelActivityEdit();
+    } catch (error) {
+      setActivityEditMessage(errorSummary(error));
+    } finally {
+      setSavingActivityEdit(false);
     }
   }
 
@@ -2012,8 +2117,65 @@ function RecordDetailPanel({
                 <StatusPill value={item.label} />
                 <span>{formatDateTime(item.at)}</span>
               </div>
-              <strong>{item.title}</strong>
-              <span>{item.detail}</span>
+              {editingActivityId === item.id && item.activity ? (
+                <div className="activity-edit-form">
+                  <label>
+                    <span>Subject</span>
+                    <input
+                      value={activityEditDraft.subject}
+                      onChange={(event) =>
+                        setActivityEditDraft((current) => ({
+                          ...current,
+                          subject: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  {item.activity ? (
+                    <ActivityPayloadFields
+                      draft={activityEditDraft.payload}
+                      type={item.activity.type}
+                      onChange={(payload) =>
+                        setActivityEditDraft((current) => ({ ...current, payload }))
+                      }
+                    />
+                  ) : null}
+                  <div className="activity-edit-actions">
+                    <button
+                      className="table-action"
+                      disabled={savingActivityEdit || activityEditDraft.subject.trim().length === 0}
+                      onClick={() => {
+                        if (item.activity) {
+                          submitActivityEdit(item.activity);
+                        }
+                      }}
+                    >
+                      <Check size={16} /> Save correction
+                    </button>
+                    <button className="table-action ghost" onClick={cancelActivityEdit}>
+                      <X size={16} /> Cancel
+                    </button>
+                  </div>
+                  {activityEditMessage ? <p className="data-message">{activityEditMessage}</p> : null}
+                </div>
+              ) : (
+                <>
+                  <strong>{item.title}</strong>
+                  <span>{item.detail}</span>
+                  {item.activity ? (
+                    <button
+                      className="timeline-edit-button"
+                      onClick={() => {
+                        if (item.activity) {
+                          startActivityEdit(item.activity);
+                        }
+                      }}
+                    >
+                      <Pencil size={14} /> Edit activity
+                    </button>
+                  ) : null}
+                </>
+              )}
             </div>
           ))}
           {filteredTimelineItems.length === 0 ? (
@@ -2757,6 +2919,31 @@ function emptyActivityPayloadDraft(): ActivityPayloadDraft {
     attendees: "",
     emailDirection: "outbound",
     location: ""
+  };
+}
+
+function activityPayloadDraftFromActivity(activity: CRMActivity): ActivityPayloadDraft {
+  const { payload } = activity;
+  const attendees = Array.isArray(payload.attendees)
+    ? payload.attendees.filter((attendee): attendee is string => typeof attendee === "string")
+    : [];
+  const direction =
+    payload.direction === "inbound" || payload.direction === "outbound"
+      ? payload.direction
+      : "outbound";
+
+  return {
+    outcome:
+      typeof payload.outcome === "string"
+        ? payload.outcome
+        : typeof payload.disposition === "string"
+          ? payload.disposition
+          : "",
+    durationMinutes:
+      typeof payload.durationMinutes === "number" ? String(payload.durationMinutes) : "",
+    attendees: attendees.join(", "),
+    emailDirection: direction,
+    location: typeof payload.location === "string" ? payload.location : ""
   };
 }
 

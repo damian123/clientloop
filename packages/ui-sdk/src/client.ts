@@ -13,6 +13,7 @@ import {
   devLoginSchema,
   exportEntitySchema,
   updateCustomFieldValuesSchema,
+  updateActivitySchema,
   type AppendNoteInput,
   type CompleteTaskInput,
   type ContactImportPreview,
@@ -35,6 +36,7 @@ import {
   type LeadConversionResult,
   type SearchResult,
   type SessionResponse,
+  type UpdateActivityInput,
   type UpdateCustomFieldValuesInput,
   type UpdateOpportunityInput
 } from "@clientloop/contracts";
@@ -224,6 +226,21 @@ export class CRMClient {
     return this.request(
       "/v1/activities",
       this.jsonRequest("POST", createActivitySchema.parse(input)),
+      apiSchemas.activity
+    );
+  }
+
+  async updateActivity(
+    id: string,
+    input: UpdateActivityInput,
+    options: { idempotencyKey?: string } = {}
+  ): Promise<Activity> {
+    return this.request(
+      `/v1/activities/${id}`,
+      this.jsonRequest("PATCH", updateActivitySchema.parse(input), {
+        "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID(),
+        "If-Match": String(input.expectedVersion)
+      }),
       apiSchemas.activity
     );
   }

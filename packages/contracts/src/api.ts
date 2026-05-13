@@ -131,6 +131,12 @@ export const createActivitySchema = z.object({
   payload: z.record(z.unknown()).default({})
 });
 
+export const updateActivitySchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  subject: z.string().min(1).optional(),
+  payload: z.record(z.unknown()).optional()
+});
+
 export const createCustomFieldDefinitionSchema = z.object({
   entityType: recordEntityTypeSchema,
   key: z.string().min(1).optional(),
@@ -290,6 +296,7 @@ export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
 export type CreateActivityInput = z.infer<typeof createActivitySchema>;
+export type UpdateActivityInput = z.infer<typeof updateActivitySchema>;
 export type CreateCustomFieldDefinitionInput = z.infer<typeof createCustomFieldDefinitionSchema>;
 export type UpdateCustomFieldValuesInput = z.infer<typeof updateCustomFieldValuesSchema>;
 export type CustomFieldValueUpdateResult = z.infer<typeof customFieldValueUpdateResultSchema>;

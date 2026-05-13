@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { seedAccounts, seedLeads, seedManagerId, seedOpportunities } from "@clientloop/domain";
+import {
+  seedAccounts,
+  seedActivities,
+  seedLeads,
+  seedManagerId,
+  seedOpportunities
+} from "@clientloop/domain";
 import { InMemoryCRMRepository } from "../adapters/in-memory-repository";
 import { buildServer } from "../server";
 
@@ -37,6 +43,49 @@ describe("CRM API", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().stage).toBe("proposal");
     expect(response.json().version).toBe(opportunity.version + 1);
+    await app.close();
+  });
+
+  it("updates an activity with optimistic concurrency", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+    const activity = seedActivities[0]!;
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/v1/activities/${activity.id}`,
+      headers: {
+        "x-user-id": seedManagerId,
+        "If-Match": String(activity.version),
+        "Idempotency-Key": "activity-update-test"
+      },
+      payload: {
+        expectedVersion: activity.version,
+        subject: "Corrected renewal pricing review",
+        payload: {
+          durationMinutes: 30,
+          outcome: "pricing approved"
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().subject).toBe("Corrected renewal pricing review");
+    expect(response.json().payload.outcome).toBe("pricing approved");
+    expect(response.json().version).toBe(activity.version + 1);
+
+    const staleResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/activities/${activity.id}`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        expectedVersion: activity.version,
+        subject: "Stale correction"
+      }
+    });
+
+    expect(staleResponse.statusCode).toBe(409);
     await app.close();
   });
 

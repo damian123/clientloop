@@ -114,6 +114,15 @@ export const openApiDocument = {
       get: { summary: "List activities" },
       post: { summary: "Log activity" }
     },
+    "/v1/activities/{id}": {
+      patch: {
+        summary: "Update activity with optimistic concurrency",
+        responses: {
+          "200": { description: "Updated" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
     "/v1/custom-fields": {
       get: { summary: "List custom field definitions" },
       post: {

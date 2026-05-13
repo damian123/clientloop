@@ -22,3 +22,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0018-record-timeline-filters.md](./0018-record-timeline-filters.md)
 - [0019-activity-payload-fields.md](./0019-activity-payload-fields.md)
 - [0020-expandable-record-timeline.md](./0020-expandable-record-timeline.md)
+- [0021-activity-corrections.md](./0021-activity-corrections.md)

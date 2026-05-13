@@ -47,6 +47,7 @@ import type {
   ListQuery,
   SearchQuery,
   SearchResult,
+  UpdateActivityInput,
   UpdateCustomFieldValuesInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
@@ -506,6 +507,39 @@ export class InMemoryCRMRepository implements CRMRepository {
       type: activity.type
     });
     return activity;
+  }
+
+  async updateActivity(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateActivityInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Activity> {
+    const index = this.store.activities.findIndex(
+      (activity) => activity.tenantId === input.principal.tenantId && activity.id === input.id
+    );
+
+    if (index < 0) {
+      throw new Error("Activity not found");
+    }
+
+    const current = this.store.activities[index]!;
+    assertCan(input.principal, "activity", "update", targetFromRecord(current));
+    const now = new Date().toISOString();
+    const updated: Activity = {
+      ...current,
+      subject: input.body.subject ?? current.subject,
+      payload: input.body.payload ?? current.payload,
+      updatedAt: now,
+      updatedBy: input.principal.user.id,
+      version: this.assertExpectedVersion(current, input.body.expectedVersion) + 1
+    };
+
+    this.store.activities[index] = updated;
+    this.enqueueEvent("activity.updated", "activity", updated.id, input.principal, now, {
+      version: updated.version
+    });
+    return updated;
   }
 
   async listCustomFieldDefinitions(tenantId: TenantId): Promise<CustomFieldDefinition[]> {

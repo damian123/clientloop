@@ -17,7 +17,8 @@ export type DomainEventType =
   | "task.created"
   | "task.completed"
   | "note.appended"
-  | "activity.logged";
+  | "activity.logged"
+  | "activity.updated";
 
 export interface DomainEvent<TPayload extends Record<string, unknown> = Record<string, unknown>> {
   id: EntityId;

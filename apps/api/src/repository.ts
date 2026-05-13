@@ -32,6 +32,7 @@ import type {
   SearchQuery,
   SearchResult,
   UpdateCustomFieldValuesInput,
+  UpdateActivityInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type { OutboxEvent } from "@clientloop/domain";
@@ -76,6 +77,12 @@ export interface CRMRepository {
   appendNote(principal: AccessPrincipal, input: AppendNoteInput): Promise<Note>;
   listActivities(tenantId: TenantId, query: ListQuery): Promise<Page<Activity>>;
   createActivity(principal: AccessPrincipal, input: CreateActivityInput): Promise<Activity>;
+  updateActivity(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateActivityInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Activity>;
   listCustomFieldDefinitions(tenantId: TenantId): Promise<CustomFieldDefinition[]>;
   createCustomFieldDefinition(
     principal: AccessPrincipal,

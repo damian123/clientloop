@@ -52,6 +52,7 @@ import type {
   ListQuery,
   SearchQuery,
   SearchResult,
+  UpdateActivityInput,
   UpdateCustomFieldValuesInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
@@ -400,8 +401,7 @@ export class PrismaCRMRepository implements CRMRepository {
       const currentRecord = await tx.lead.findFirst({
         where: {
           id: input.id,
-          tenantId: input.principal.tenantId,
-          archivedAt: null
+          tenantId: input.principal.tenantId
         }
       });
 
@@ -480,8 +480,7 @@ export class PrismaCRMRepository implements CRMRepository {
         where: {
           id: input.id,
           tenantId: input.principal.tenantId,
-          version: input.body.expectedVersion,
-          archivedAt: null
+          version: input.body.expectedVersion
         },
         data: {
           status: updatedLead.status,
@@ -630,8 +629,7 @@ export class PrismaCRMRepository implements CRMRepository {
       const currentRecord = await tx.opportunity.findFirst({
         where: {
           id: input.id,
-          tenantId: input.principal.tenantId,
-          archivedAt: null
+          tenantId: input.principal.tenantId
         }
       });
 
@@ -685,8 +683,7 @@ export class PrismaCRMRepository implements CRMRepository {
         where: {
           id: input.id,
           tenantId: input.principal.tenantId,
-          version: input.body.expectedVersion,
-          archivedAt: null
+          version: input.body.expectedVersion
         },
         data: {
           stage: updated.stage,
@@ -954,6 +951,61 @@ export class PrismaCRMRepository implements CRMRepository {
     });
 
     return this.toActivity(activity);
+  }
+
+  async updateActivity(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateActivityInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Activity> {
+    return this.prisma.$transaction(async (tx) => {
+      const currentRecord = await tx.activity.findFirst({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId
+        }
+      });
+
+      if (!currentRecord) {
+        throw new Error("Activity not found");
+      }
+
+      const current = this.toActivity(currentRecord);
+      assertCan(input.principal, "activity", "update", targetFromRecord(current));
+      const now = new Date();
+      const nextVersion = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+
+      const result = await tx.activity.updateMany({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          version: input.body.expectedVersion
+        },
+        data: {
+          subject: input.body.subject ?? current.subject,
+          payload: (input.body.payload ?? current.payload) as Prisma.InputJsonObject,
+          updatedAt: now,
+          updatedBy: input.principal.user.id,
+          version: nextVersion
+        }
+      });
+
+      if (result.count !== 1) {
+        throw new Error("Version conflict");
+      }
+
+      const persisted = await tx.activity.findUniqueOrThrow({
+        where: { id: input.id }
+      });
+      const response = this.toActivity(persisted);
+
+      await this.enqueueEvent(tx, "activity.updated", "activity", response.id, input.principal, now, {
+        version: response.version
+      });
+
+      return response;
+    });
   }
 
   async listCustomFieldDefinitions(tenantId: TenantId): Promise<CustomFieldDefinition[]> {
