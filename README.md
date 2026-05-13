@@ -9,7 +9,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - Shared `@clientloop/ui-sdk` package for a typed browser/server API client.
 - `@clientloop/api` Fastify service with CRM modules, auth context, object-level authorization checks, optimistic concurrency, idempotency handling, audit fields, and outbox event emission.
 - BFF-style session cookies for the browser, local dev login, and CSRF checks on cookie-backed mutations.
-- Account and contact creation plus lead creation and conversion workflows that create account, contact, optional opportunity, and lead conversion events in one command.
+- Account, contact, and opportunity creation plus lead creation and conversion workflows that create account, contact, optional opportunity, and lead conversion events in one command.
 - Custom field definition creation APIs plus a web Data view for managing account, contact, lead, and opportunity field definitions.
 - Custom field value editing for CRM records with validation and optimistic concurrency.
 - Account, contact, lead, and opportunity detail panels for focused record context and custom field editing.

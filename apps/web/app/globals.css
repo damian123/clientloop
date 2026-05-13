@@ -705,7 +705,12 @@ tr:last-child td {
   grid-template-columns: repeat(3, minmax(140px, 1fr));
 }
 
-.contact-create-form .record-create-actions {
+.opportunity-create-form {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.contact-create-form .record-create-actions,
+.opportunity-create-form .record-create-actions {
   grid-column: 1 / -1;
 }
 

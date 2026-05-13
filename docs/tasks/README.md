@@ -34,3 +34,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0030-lead-create-validation.md](./0030-lead-create-validation.md)
 - [0031-contextual-account-create.md](./0031-contextual-account-create.md)
 - [0032-contextual-contact-create.md](./0032-contextual-contact-create.md)
+- [0033-contextual-opportunity-create.md](./0033-contextual-opportunity-create.md)

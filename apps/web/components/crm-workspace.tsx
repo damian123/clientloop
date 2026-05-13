@@ -29,6 +29,7 @@ import type {
   CreateContactInput,
   CreateActivityInput,
   CreateLeadInput,
+  CreateOpportunityInput,
   CreateTaskInput,
   CreateCustomFieldDefinitionInput,
   DashboardResponse,
@@ -96,6 +97,15 @@ type LeadCreateDraft = {
   companyName: string;
   email: string;
   source: string;
+};
+type OpportunityCreateDraft = {
+  accountId: string;
+  primaryContactId: string;
+  name: string;
+  stage: OpportunityStage;
+  amount: string;
+  expectedCloseDate: string;
+  probabilityPct: string;
 };
 type TaskEditDraft = {
   title: string;
@@ -207,6 +217,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     emptyLeadCreateDraft()
   );
   const [creatingLead, setCreatingLead] = useState(false);
+  const [opportunityCreateOpen, setOpportunityCreateOpen] = useState(false);
+  const [opportunityCreateDraft, setOpportunityCreateDraft] = useState<OpportunityCreateDraft>(() =>
+    emptyOpportunityCreateDraft()
+  );
+  const [creatingOpportunity, setCreatingOpportunity] = useState(false);
+  const [opportunityMessage, setOpportunityMessage] = useState("");
   const [contactCsv, setContactCsv] = useState("");
   const [importPreview, setImportPreview] = useState<ContactImportPreview | null>(null);
   const [dataMessage, setDataMessage] = useState("");
@@ -573,7 +589,18 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     changeViewMode("contacts");
   }, [changeViewMode]);
 
+  const openOpportunityCreate = useCallback(() => {
+    setOpportunityCreateOpen(true);
+    setOpportunityMessage("");
+    changeViewMode("pipeline");
+  }, [changeViewMode]);
+
   const openContextualCreate = useCallback(() => {
+    if (viewMode === "pipeline") {
+      openOpportunityCreate();
+      return;
+    }
+
     if (viewMode === "accounts") {
       openAccountCreate();
       return;
@@ -585,7 +612,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
 
     openLeadCreate();
-  }, [openAccountCreate, openContactCreate, openLeadCreate, viewMode]);
+  }, [openAccountCreate, openContactCreate, openLeadCreate, openOpportunityCreate, viewMode]);
 
   useEffect(() => {
     void ensureSession();
@@ -1008,6 +1035,61 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }
 
+  async function createOpportunityFromToolbar() {
+    const input = opportunityCreateInput(
+      opportunityCreateDraft,
+      session?.user.id ?? seedManagerId
+    );
+    if (!input || creatingOpportunity) {
+      return;
+    }
+
+    setCreatingOpportunity(true);
+    setOpportunityMessage("");
+    try {
+      let opportunity: Opportunity;
+      if (!apiBaseUrl) {
+        const now = new Date().toISOString();
+        opportunity = {
+          id: crypto.randomUUID(),
+          accountId: input.accountId,
+          primaryContactId: input.primaryContactId ?? null,
+          name: input.name,
+          stage: input.stage ?? "qualification",
+          amount: input.amount ?? null,
+          currency: input.currency ?? "USD",
+          expectedCloseDate: input.expectedCloseDate ?? null,
+          ownerUserId: input.ownerUserId,
+          probabilityPct: input.probabilityPct ?? null,
+          customFields: input.customFields ?? {},
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        opportunity = await client.createOpportunity(input);
+      }
+
+      setOpportunities((current) => [opportunity, ...current]);
+      setOpportunityCreateDraft(emptyOpportunityCreateDraft());
+      setOpportunityCreateOpen(false);
+      setOpportunityMessage(`Created ${opportunity.name}`);
+      openRecordDetail({ entityType: "opportunity", id: opportunity.id }, "pipeline");
+    } catch (error) {
+      setOpportunityMessage(errorSummary(error));
+    } finally {
+      setCreatingOpportunity(false);
+    }
+  }
+
   async function convertLeadToOpportunity(lead: Lead) {
     if (!apiBaseUrl || lead.status === "converted" || lead.status === "disqualified") {
       return;
@@ -1381,21 +1463,38 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
         <div className="content-grid">
           <section className="main-panel" aria-label={viewModeTitle(viewMode)}>
             {viewMode === "pipeline" ? (
-              <PipelineView
-                accountsById={accountsById}
-                customFieldDefinitions={customFieldsByEntity.get("opportunity") ?? []}
-                filteredOpportunities={filteredOpportunities}
-                stageFilter={stageFilter}
-                syncingId={syncingId}
-                onAdvance={advanceOpportunity}
-                onOpenRecord={(opportunity) =>
-                  openRecordDetail(
-                    { entityType: "opportunity", id: opportunity.id },
-                    "pipeline"
-                  )
-                }
-                onStageFilter={setStageFilter}
-              />
+              <>
+                {opportunityCreateOpen ? (
+                  <OpportunityCreateForm
+                    accounts={accounts}
+                    contacts={contacts}
+                    busy={creatingOpportunity}
+                    draft={opportunityCreateDraft}
+                    onCancel={() => {
+                      setOpportunityCreateOpen(false);
+                      setOpportunityCreateDraft(emptyOpportunityCreateDraft());
+                    }}
+                    onChange={setOpportunityCreateDraft}
+                    onSubmit={createOpportunityFromToolbar}
+                  />
+                ) : null}
+                <PipelineView
+                  accountsById={accountsById}
+                  customFieldDefinitions={customFieldsByEntity.get("opportunity") ?? []}
+                  filteredOpportunities={filteredOpportunities}
+                  message={opportunityMessage}
+                  stageFilter={stageFilter}
+                  syncingId={syncingId}
+                  onAdvance={advanceOpportunity}
+                  onOpenRecord={(opportunity) =>
+                    openRecordDetail(
+                      { entityType: "opportunity", id: opportunity.id },
+                      "pipeline"
+                    )
+                  }
+                  onStageFilter={setStageFilter}
+                />
+              </>
             ) : null}
 
             {viewMode === "leads" ? (
@@ -1707,6 +1806,7 @@ function PipelineView(props: {
   accountsById: Map<string, Account>;
   customFieldDefinitions: CustomFieldDefinition[];
   filteredOpportunities: Opportunity[];
+  message: string;
   stageFilter: OpportunityStage | "all";
   syncingId: string | null;
   onAdvance: (opportunity: Opportunity) => void;
@@ -1800,7 +1900,137 @@ function PipelineView(props: {
           );
         })}
       </div>
+      {props.message ? <p className="data-message">{props.message}</p> : null}
     </>
+  );
+}
+
+function OpportunityCreateForm({
+  accounts,
+  contacts,
+  busy,
+  draft,
+  onCancel,
+  onChange,
+  onSubmit
+}: {
+  accounts: Account[];
+  contacts: Contact[];
+  busy: boolean;
+  draft: OpportunityCreateDraft;
+  onCancel: () => void;
+  onChange: (draft: OpportunityCreateDraft) => void;
+  onSubmit: () => void;
+}) {
+  const accountContacts = draft.accountId
+    ? contacts.filter((contact) => contact.accountId === draft.accountId)
+    : [];
+  const validationMessage = opportunityCreateValidationMessage(draft);
+
+  return (
+    <section className="record-create-panel" aria-label="Create opportunity">
+      <div className="panel-heading small">
+        <div>
+          <p className="eyebrow">New</p>
+          <h3>Create opportunity</h3>
+        </div>
+      </div>
+      <div className="record-create-form opportunity-create-form">
+        <label>
+          <span>Opportunity</span>
+          <input
+            value={draft.name}
+            onChange={(event) => onChange({ ...draft, name: event.target.value })}
+            placeholder="Expansion deal"
+          />
+        </label>
+        <label>
+          <span>Account</span>
+          <select
+            value={draft.accountId}
+            onChange={(event) =>
+              onChange({ ...draft, accountId: event.target.value, primaryContactId: "" })
+            }
+          >
+            <option value="">Select account</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Contact</span>
+          <select
+            value={draft.primaryContactId}
+            disabled={!draft.accountId || accountContacts.length === 0}
+            onChange={(event) => onChange({ ...draft, primaryContactId: event.target.value })}
+          >
+            <option value="">No primary contact</option>
+            {accountContacts.map((contact) => (
+              <option key={contact.id} value={contact.id}>
+                {contact.firstName} {contact.lastName}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Stage</span>
+          <select
+            value={draft.stage}
+            onChange={(event) =>
+              onChange({ ...draft, stage: event.target.value as OpportunityStage })
+            }
+          >
+            {opportunityStageOrder.slice(0, 4).map((stage) => (
+              <option key={stage} value={stage}>
+                {stageLabels[stage]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Amount</span>
+          <input
+            inputMode="decimal"
+            value={draft.amount}
+            onChange={(event) => onChange({ ...draft, amount: event.target.value })}
+            placeholder="50000"
+          />
+        </label>
+        <label>
+          <span>Close date</span>
+          <input
+            type="date"
+            value={draft.expectedCloseDate}
+            onChange={(event) => onChange({ ...draft, expectedCloseDate: event.target.value })}
+          />
+        </label>
+        <label>
+          <span>Probability</span>
+          <input
+            inputMode="numeric"
+            value={draft.probabilityPct}
+            onChange={(event) => onChange({ ...draft, probabilityPct: event.target.value })}
+            placeholder="40"
+          />
+        </label>
+        <div className="record-create-actions">
+          <button
+            className="command-button"
+            disabled={busy || !opportunityCreateInput(draft, seedManagerId)}
+            onClick={onSubmit}
+          >
+            <Plus size={16} /> Create opportunity
+          </button>
+          <button className="table-action" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+      {validationMessage ? <p className="data-message error">{validationMessage}</p> : null}
+    </section>
   );
 }
 
@@ -3990,6 +4220,79 @@ function leadCreateValidationMessage(draft: LeadCreateDraft) {
   }
 
   return "";
+}
+
+function emptyOpportunityCreateDraft(): OpportunityCreateDraft {
+  return {
+    accountId: "",
+    primaryContactId: "",
+    name: "",
+    stage: "qualification",
+    amount: "",
+    expectedCloseDate: "",
+    probabilityPct: ""
+  };
+}
+
+function opportunityCreateInput(
+  draft: OpportunityCreateDraft,
+  ownerUserId: string
+): CreateOpportunityInput | null {
+  const name = draft.name.trim();
+  const amount = optionalNonnegativeNumber(draft.amount);
+  const probabilityPct = optionalIntegerInRange(draft.probabilityPct, 0, 100);
+
+  if (!name || !draft.accountId || amount === null || probabilityPct === null) {
+    return null;
+  }
+
+  return {
+    accountId: draft.accountId,
+    primaryContactId: draft.primaryContactId || undefined,
+    name,
+    stage: draft.stage,
+    amount: amount ?? undefined,
+    currency: "USD",
+    expectedCloseDate: draft.expectedCloseDate || undefined,
+    ownerUserId,
+    probabilityPct: probabilityPct ?? undefined,
+    customFields: {}
+  };
+}
+
+function opportunityCreateValidationMessage(draft: OpportunityCreateDraft) {
+  if (draft.amount.trim() && optionalNonnegativeNumber(draft.amount) === null) {
+    return "Enter a nonnegative amount or leave amount blank.";
+  }
+
+  if (
+    draft.probabilityPct.trim() &&
+    optionalIntegerInRange(draft.probabilityPct, 0, 100) === null
+  ) {
+    return "Enter a whole probability from 0 to 100 or leave probability blank.";
+  }
+
+  return "";
+}
+
+function optionalNonnegativeNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function optionalIntegerInRange(value: string, min: number, max: number) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const numeric = Number(trimmed);
+  return Number.isInteger(numeric) && numeric >= min && numeric <= max ? numeric : null;
 }
 
 function isValidOptionalEmail(value: string) {
