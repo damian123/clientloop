@@ -122,6 +122,20 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [viewMode, setViewMode] = useState<ViewMode>(
     () => parseViewMode(searchParams.get("view")) ?? "pipeline"
   );
+  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>(() =>
+    parseTaskStatusFilter(searchParams.get("taskStatus"))
+  );
+  const [taskOwnerFilter, setTaskOwnerFilter] = useState<TaskOwnerFilter>(() =>
+    parseTaskOwnerFilter(searchParams.get("taskOwner"))
+  );
+  const [taskDueFilter, setTaskDueFilter] = useState<TaskDueFilter>(() =>
+    parseTaskDueFilter(searchParams.get("taskDue"))
+  );
+  const taskFilterRef = useRef({
+    taskStatusFilter,
+    taskOwnerFilter,
+    taskDueFilter
+  });
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState<OpportunityStage | "all">("all");
   const [accounts, setAccounts] = useState<Account[]>(initialDashboard.accounts);
@@ -165,14 +179,31 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   useEffect(() => {
     const nextView = parseViewMode(searchParams.get("view")) ?? "pipeline";
     const nextRecord = parseSelectedRecord(searchParams.get("record"));
+    const nextTaskStatusFilter = parseTaskStatusFilter(searchParams.get("taskStatus"));
+    const nextTaskOwnerFilter = parseTaskOwnerFilter(searchParams.get("taskOwner"));
+    const nextTaskDueFilter = parseTaskDueFilter(searchParams.get("taskDue"));
     setViewMode(nextView);
+    setTaskStatusFilter(nextTaskStatusFilter);
+    setTaskOwnerFilter(nextTaskOwnerFilter);
+    setTaskDueFilter(nextTaskDueFilter);
+    taskFilterRef.current = {
+      taskStatusFilter: nextTaskStatusFilter,
+      taskOwnerFilter: nextTaskOwnerFilter,
+      taskDueFilter: nextTaskDueFilter
+    };
     setSelectedRecord((current) =>
       sameSelectedRecord(current, nextRecord) ? current : nextRecord
     );
   }, [searchParams]);
 
   const replaceWorkspaceRoute = useCallback(
-    (updates: { view?: ViewMode; record?: SelectedRecordRef | null }) => {
+    (updates: {
+      view?: ViewMode;
+      record?: SelectedRecordRef | null;
+      taskStatusFilter?: TaskStatusFilter;
+      taskOwnerFilter?: TaskOwnerFilter;
+      taskDueFilter?: TaskDueFilter;
+    }) => {
       const nextParams = new URLSearchParams(searchParams.toString());
 
       if (updates.view) {
@@ -185,6 +216,18 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
         } else {
           nextParams.delete("record");
         }
+      }
+
+      if (updates.taskStatusFilter) {
+        setDefaultableParam(nextParams, "taskStatus", updates.taskStatusFilter, "all");
+      }
+
+      if (updates.taskOwnerFilter) {
+        setDefaultableParam(nextParams, "taskOwner", updates.taskOwnerFilter, "all");
+      }
+
+      if (updates.taskDueFilter) {
+        setDefaultableParam(nextParams, "taskDue", updates.taskDueFilter, "all");
       }
 
       const queryString = nextParams.toString();
@@ -216,6 +259,25 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     setSelectedRecord(null);
     replaceWorkspaceRoute({ record: null });
   }, [replaceWorkspaceRoute]);
+
+  const changeTaskQueueFilters = useCallback(
+    (updates: {
+      taskStatusFilter?: TaskStatusFilter;
+      taskOwnerFilter?: TaskOwnerFilter;
+      taskDueFilter?: TaskDueFilter;
+    }) => {
+      const nextFilters = {
+        ...taskFilterRef.current,
+        ...updates
+      };
+      taskFilterRef.current = nextFilters;
+      setTaskStatusFilter(nextFilters.taskStatusFilter);
+      setTaskOwnerFilter(nextFilters.taskOwnerFilter);
+      setTaskDueFilter(nextFilters.taskDueFilter);
+      replaceWorkspaceRoute(nextFilters);
+    },
+    [replaceWorkspaceRoute]
+  );
 
   const accountsById = useMemo(
     () => new Map(accounts.map((account) => [account.id, account])),
@@ -1120,9 +1182,13 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               accountsById={accountsById}
               contactsById={contactsById}
               currentUserId={session?.user.id ?? seedManagerId}
+              dueFilter={taskDueFilter}
               leads={leads}
               opportunities={opportunities}
+              ownerFilter={taskOwnerFilter}
+              statusFilter={taskStatusFilter}
               onComplete={completeTask}
+              onFilterChange={changeTaskQueueFilters}
               onUpdateTask={updateRecordTask}
             />
             <Timeline
@@ -2594,8 +2660,12 @@ function TaskQueue({
   accountsById,
   contactsById,
   currentUserId,
+  dueFilter,
   leads,
+  ownerFilter,
+  statusFilter,
   onComplete,
+  onFilterChange,
   onUpdateTask
 }: {
   tasks: Task[];
@@ -2603,15 +2673,20 @@ function TaskQueue({
   accountsById: Map<string, Account>;
   contactsById: Map<string, Contact>;
   currentUserId: string;
+  dueFilter: TaskDueFilter;
   leads: Lead[];
+  ownerFilter: TaskOwnerFilter;
+  statusFilter: TaskStatusFilter;
   onComplete: (task: Task) => void;
+  onFilterChange: (updates: {
+    taskStatusFilter?: TaskStatusFilter;
+    taskOwnerFilter?: TaskOwnerFilter;
+    taskDueFilter?: TaskDueFilter;
+  }) => void;
   onUpdateTask: (id: string, input: UpdateTaskInput) => Promise<Task>;
 }) {
   const opportunityById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
-  const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>("all");
-  const [ownerFilter, setOwnerFilter] = useState<TaskOwnerFilter>("all");
-  const [dueFilter, setDueFilter] = useState<TaskDueFilter>("all");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [taskEditDraft, setTaskEditDraft] = useState<TaskEditDraft>(() => emptyTaskEditDraft());
   const [taskEditMessage, setTaskEditMessage] = useState("");
@@ -2675,7 +2750,7 @@ function TaskQueue({
             value={statusFilter}
             onChange={(event) => {
               cancelEdit();
-              setStatusFilter(event.target.value as TaskStatusFilter);
+              onFilterChange({ taskStatusFilter: event.target.value as TaskStatusFilter });
             }}
           >
             <option value="all">All statuses</option>
@@ -2691,7 +2766,7 @@ function TaskQueue({
             value={ownerFilter}
             onChange={(event) => {
               cancelEdit();
-              setOwnerFilter(event.target.value as TaskOwnerFilter);
+              onFilterChange({ taskOwnerFilter: event.target.value as TaskOwnerFilter });
             }}
           >
             <option value="all">All owners</option>
@@ -2704,7 +2779,7 @@ function TaskQueue({
             value={dueFilter}
             onChange={(event) => {
               cancelEdit();
-              setDueFilter(event.target.value as TaskDueFilter);
+              onFilterChange({ taskDueFilter: event.target.value as TaskDueFilter });
             }}
           >
             <option value="all">All dates</option>
@@ -3160,6 +3235,40 @@ function parseViewMode(value: string | null): ViewMode | null {
   }
 
   return null;
+}
+
+function parseTaskStatusFilter(value: string | null): TaskStatusFilter {
+  if (
+    value === "open" ||
+    value === "in_progress" ||
+    value === "done" ||
+    value === "cancelled"
+  ) {
+    return value;
+  }
+
+  return "all";
+}
+
+function parseTaskOwnerFilter(value: string | null): TaskOwnerFilter {
+  return value === "mine" ? "mine" : "all";
+}
+
+function parseTaskDueFilter(value: string | null): TaskDueFilter {
+  if (value === "overdue" || value === "today" || value === "upcoming" || value === "none") {
+    return value;
+  }
+
+  return "all";
+}
+
+function setDefaultableParam(params: URLSearchParams, key: string, value: string, defaultValue: string) {
+  if (value === defaultValue) {
+    params.delete(key);
+    return;
+  }
+
+  params.set(key, value);
 }
 
 function parseSelectedRecord(value: string | null): SelectedRecordRef | null {

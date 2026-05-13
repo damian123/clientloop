@@ -27,3 +27,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0023-task-corrections.md](./0023-task-corrections.md)
 - [0024-task-queue-editing.md](./0024-task-queue-editing.md)
 - [0025-task-queue-filters.md](./0025-task-queue-filters.md)
+- [0026-task-filter-deep-links.md](./0026-task-filter-deep-links.md)
