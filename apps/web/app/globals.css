@@ -873,6 +873,16 @@ tr:last-child td {
   font-size: 12px;
 }
 
+.timeline-more-button {
+  min-height: 34px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--panel-muted);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .timeline-record-meta {
   display: flex;
   flex-wrap: wrap;

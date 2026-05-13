@@ -1671,6 +1671,11 @@ function RecordDetailPanel({
     timelineFilter === "all"
       ? recordTimelineItems
       : recordTimelineItems.filter((item) => item.category === timelineFilter);
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const visibleTimelineItems = timelineExpanded
+    ? filteredTimelineItems
+    : filteredTimelineItems.slice(0, 6);
+  const hiddenTimelineCount = Math.max(filteredTimelineItems.length - visibleTimelineItems.length, 0);
   const [taskDraft, setTaskDraft] = useState({
     title: "",
     description: "",
@@ -1707,6 +1712,7 @@ function RecordDetailPanel({
     });
     setActivityMessage("");
     setTimelineFilter("all");
+    setTimelineExpanded(false);
   }, [entityType, record.id]);
 
   async function submitTask() {
@@ -1990,14 +1996,17 @@ function RecordDetailPanel({
             <button
               className={timelineFilter === filter ? "selected" : ""}
               key={filter}
-              onClick={() => setTimelineFilter(filter)}
+              onClick={() => {
+                setTimelineFilter(filter);
+                setTimelineExpanded(false);
+              }}
             >
               {timelineFilterLabel(filter)}
             </button>
           ))}
         </div>
         <div className="detail-list">
-          {filteredTimelineItems.slice(0, 6).map((item) => (
+          {visibleTimelineItems.map((item) => (
             <div className="detail-list-row timeline-record-row" key={`${item.kind}:${item.id}`}>
               <div className="timeline-record-meta">
                 <StatusPill value={item.label} />
@@ -2009,6 +2018,14 @@ function RecordDetailPanel({
           ))}
           {filteredTimelineItems.length === 0 ? (
             <p className="detail-empty">{timelineEmptyMessage(timelineFilter)}</p>
+          ) : null}
+          {filteredTimelineItems.length > 6 ? (
+            <button
+              className="timeline-more-button"
+              onClick={() => setTimelineExpanded((current) => !current)}
+            >
+              {timelineExpanded ? "Show fewer" : `Show ${hiddenTimelineCount} older`}
+            </button>
           ) : null}
         </div>
       </section>
