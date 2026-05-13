@@ -81,6 +81,9 @@ type TaskEditDraft = {
   dueAt: string;
   priority: Task["priority"];
 };
+type TaskStatusFilter = Task["status"] | "all";
+type TaskOwnerFilter = "all" | "mine";
+type TaskDueFilter = "all" | "overdue" | "today" | "upcoming" | "none";
 type TimelineItem = {
   id: string;
   at: string;
@@ -1116,6 +1119,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               tasks={tasks}
               accountsById={accountsById}
               contactsById={contactsById}
+              currentUserId={session?.user.id ?? seedManagerId}
               leads={leads}
               opportunities={opportunities}
               onComplete={completeTask}
@@ -2589,6 +2593,7 @@ function TaskQueue({
   opportunities,
   accountsById,
   contactsById,
+  currentUserId,
   leads,
   onComplete,
   onUpdateTask
@@ -2597,16 +2602,26 @@ function TaskQueue({
   opportunities: Opportunity[];
   accountsById: Map<string, Account>;
   contactsById: Map<string, Contact>;
+  currentUserId: string;
   leads: Lead[];
   onComplete: (task: Task) => void;
   onUpdateTask: (id: string, input: UpdateTaskInput) => Promise<Task>;
 }) {
   const opportunityById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
+  const [statusFilter, setStatusFilter] = useState<TaskStatusFilter>("all");
+  const [ownerFilter, setOwnerFilter] = useState<TaskOwnerFilter>("all");
+  const [dueFilter, setDueFilter] = useState<TaskDueFilter>("all");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [taskEditDraft, setTaskEditDraft] = useState<TaskEditDraft>(() => emptyTaskEditDraft());
   const [taskEditMessage, setTaskEditMessage] = useState("");
   const [savingTaskEdit, setSavingTaskEdit] = useState(false);
+  const filteredTasks = tasks.filter(
+    (task) =>
+      (statusFilter === "all" || task.status === statusFilter) &&
+      (ownerFilter === "all" || task.assignedUserId === currentUserId) &&
+      taskMatchesDueFilter(task, dueFilter)
+  );
 
   function startEdit(task: Task) {
     setEditingTaskId(task.id);
@@ -2653,8 +2668,59 @@ function TaskQueue({
         </div>
         <ClipboardCheck size={18} aria-hidden="true" />
       </div>
+      <div className="task-queue-filters" aria-label="Task queue filters">
+        <label>
+          <span>Status</span>
+          <select
+            value={statusFilter}
+            onChange={(event) => {
+              cancelEdit();
+              setStatusFilter(event.target.value as TaskStatusFilter);
+            }}
+          >
+            <option value="all">All statuses</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="done">Done</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </label>
+        <label>
+          <span>Owner</span>
+          <select
+            value={ownerFilter}
+            onChange={(event) => {
+              cancelEdit();
+              setOwnerFilter(event.target.value as TaskOwnerFilter);
+            }}
+          >
+            <option value="all">All owners</option>
+            <option value="mine">My tasks</option>
+          </select>
+        </label>
+        <label>
+          <span>Due</span>
+          <select
+            value={dueFilter}
+            onChange={(event) => {
+              cancelEdit();
+              setDueFilter(event.target.value as TaskDueFilter);
+            }}
+          >
+            <option value="all">All dates</option>
+            <option value="overdue">Overdue</option>
+            <option value="today">Today</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="none">No due date</option>
+          </select>
+        </label>
+      </div>
+      <p className="task-filter-summary">
+        Showing {filteredTasks.length} of {tasks.length} tasks
+      </p>
       <div className="task-list">
-        {tasks.map((task) => {
+        {filteredTasks.length === 0 ? <p className="data-message">No tasks match these filters.</p> : null}
+        {filteredTasks.map((task) => {
           const parentOpportunity =
             task.parent?.type === "opportunity" ? opportunityById.get(task.parent.id) : undefined;
           const parentAccount =
@@ -3356,6 +3422,36 @@ function taskTimelineDetail(task: Task) {
     task.priority,
     task.dueAt ? `due ${formatDate(task.dueAt)}` : ""
   ].filter(Boolean).join(" / ");
+}
+
+function taskMatchesDueFilter(task: Task, filter: TaskDueFilter) {
+  if (filter === "all") {
+    return true;
+  }
+
+  if (!task.dueAt) {
+    return filter === "none";
+  }
+
+  if (filter === "none") {
+    return false;
+  }
+
+  const dueDate = new Date(task.dueAt);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  if (filter === "overdue") {
+    return dueDate < today;
+  }
+
+  if (filter === "today") {
+    return dueDate >= today && dueDate < tomorrow;
+  }
+
+  return dueDate >= tomorrow;
 }
 
 function emptyActivityPayloadDraft(): ActivityPayloadDraft {

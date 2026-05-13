@@ -980,6 +980,41 @@ tr:last-child td {
   gap: 10px;
 }
 
+.task-queue-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.task-queue-filters label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.task-queue-filters label > span,
+.task-filter-summary {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.task-queue-filters select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 8px;
+  background: var(--panel-muted);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.task-filter-summary {
+  margin: 0 0 10px;
+}
+
 .task-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1115,7 +1150,8 @@ tr:last-child td {
 
   .field-form,
   .definition-row,
-  .activity-payload-grid {
+  .activity-payload-grid,
+  .task-queue-filters {
     grid-template-columns: 1fr;
   }
 
