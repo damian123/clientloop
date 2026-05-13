@@ -49,6 +49,7 @@ import type {
   SearchResult,
   UpdateActivityInput,
   UpdateCustomFieldValuesInput,
+  UpdateNoteInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
@@ -479,6 +480,39 @@ export class InMemoryCRMRepository implements CRMRepository {
       parent: note.parent
     });
     return note;
+  }
+
+  async updateNote(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateNoteInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Note> {
+    const index = this.store.notes.findIndex(
+      (note) => note.tenantId === input.principal.tenantId && note.id === input.id
+    );
+
+    if (index < 0) {
+      throw new Error("Note not found");
+    }
+
+    const current = this.store.notes[index]!;
+    assertCan(input.principal, "note", "update", targetFromRecord(current));
+    const now = new Date().toISOString();
+    const updated: Note = {
+      ...current,
+      body: input.body.body,
+      bodyFormat: input.body.bodyFormat ?? current.bodyFormat,
+      updatedAt: now,
+      updatedBy: input.principal.user.id,
+      version: this.assertExpectedVersion(current, input.body.expectedVersion) + 1
+    };
+
+    this.store.notes[index] = updated;
+    this.enqueueEvent("note.updated", "note", updated.id, input.principal, now, {
+      version: updated.version
+    });
+    return updated;
   }
 
   async listActivities(tenantId: TenantId, query: ListQuery): Promise<Page<Activity>> {

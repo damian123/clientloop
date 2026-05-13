@@ -110,6 +110,15 @@ export const openApiDocument = {
     "/v1/notes": {
       post: { summary: "Append note" }
     },
+    "/v1/notes/{id}": {
+      patch: {
+        summary: "Update note with optimistic concurrency",
+        responses: {
+          "200": { description: "Updated" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
     "/v1/activities": {
       get: { summary: "List activities" },
       post: { summary: "Log activity" }

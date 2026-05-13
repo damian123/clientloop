@@ -33,6 +33,7 @@ import type {
   SearchResult,
   UpdateCustomFieldValuesInput,
   UpdateActivityInput,
+  UpdateNoteInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type { OutboxEvent } from "@clientloop/domain";
@@ -75,6 +76,12 @@ export interface CRMRepository {
     expectedVersion: number;
   }): Promise<Task>;
   appendNote(principal: AccessPrincipal, input: AppendNoteInput): Promise<Note>;
+  updateNote(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateNoteInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Note>;
   listActivities(tenantId: TenantId, query: ListQuery): Promise<Page<Activity>>;
   createActivity(principal: AccessPrincipal, input: CreateActivityInput): Promise<Activity>;
   updateActivity(input: {

@@ -4,6 +4,7 @@ import {
   seedActivities,
   seedLeads,
   seedManagerId,
+  seedNotes,
   seedOpportunities
 } from "@clientloop/domain";
 import { InMemoryCRMRepository } from "../adapters/in-memory-repository";
@@ -82,6 +83,44 @@ describe("CRM API", () => {
       payload: {
         expectedVersion: activity.version,
         subject: "Stale correction"
+      }
+    });
+
+    expect(staleResponse.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("updates a note with optimistic concurrency", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+    const note = seedNotes[0]!;
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/v1/notes/${note.id}`,
+      headers: {
+        "x-user-id": seedManagerId,
+        "If-Match": String(note.version),
+        "Idempotency-Key": "note-update-test"
+      },
+      payload: {
+        expectedVersion: note.version,
+        body: "Corrected note body"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().body).toBe("Corrected note body");
+    expect(response.json().version).toBe(note.version + 1);
+
+    const staleResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/notes/${note.id}`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        expectedVersion: note.version,
+        body: "Stale note correction"
       }
     });
 

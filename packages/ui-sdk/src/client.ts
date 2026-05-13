@@ -14,6 +14,7 @@ import {
   exportEntitySchema,
   updateCustomFieldValuesSchema,
   updateActivitySchema,
+  updateNoteSchema,
   type AppendNoteInput,
   type CompleteTaskInput,
   type ContactImportPreview,
@@ -38,6 +39,7 @@ import {
   type SessionResponse,
   type UpdateActivityInput,
   type UpdateCustomFieldValuesInput,
+  type UpdateNoteInput,
   type UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type {
@@ -46,6 +48,7 @@ import type {
   Contact,
   CustomFieldDefinition,
   Lead,
+  Note,
   Opportunity,
   Page,
   RecordEntityType,
@@ -220,6 +223,21 @@ export class CRMClient {
 
   async appendNote(input: AppendNoteInput) {
     return this.request("/v1/notes", this.jsonRequest("POST", input), apiSchemas.note);
+  }
+
+  async updateNote(
+    id: string,
+    input: UpdateNoteInput,
+    options: { idempotencyKey?: string } = {}
+  ): Promise<Note> {
+    return this.request(
+      `/v1/notes/${id}`,
+      this.jsonRequest("PATCH", updateNoteSchema.parse(input), {
+        "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID(),
+        "If-Match": String(input.expectedVersion)
+      }),
+      apiSchemas.note
+    );
   }
 
   async createActivity(input: CreateActivityInput): Promise<Activity> {

@@ -17,6 +17,7 @@ export type DomainEventType =
   | "task.created"
   | "task.completed"
   | "note.appended"
+  | "note.updated"
   | "activity.logged"
   | "activity.updated";
 

@@ -30,7 +30,8 @@ import type {
   DashboardResponse,
   ExportEntity,
   SessionResponse,
-  UpdateActivityInput
+  UpdateActivityInput,
+  UpdateNoteInput
 } from "@clientloop/contracts";
 import type {
   Account,
@@ -82,6 +83,7 @@ type TimelineItem = {
   title: string;
   detail: string;
   activity?: CRMActivity;
+  note?: Note;
 };
 type SelectedRecordRef =
   | { entityType: "account"; id: string }
@@ -523,6 +525,36 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
     const note = await client.appendNote(input);
     setNotes((current) => [note, ...current]);
+    return note;
+  }
+
+  async function updateRecordNote(id: string, input: UpdateNoteInput) {
+    if (!apiBaseUrl) {
+      const now = new Date().toISOString();
+      const currentNote = notes.find((note) => note.id === id);
+      if (!currentNote || currentNote.version !== input.expectedVersion) {
+        throw new Error("Version conflict");
+      }
+      const updatedNote: Note = {
+        ...currentNote,
+        body: input.body,
+        bodyFormat: input.bodyFormat ?? currentNote.bodyFormat,
+        updatedAt: now,
+        updatedBy: seedManagerId,
+        version: currentNote.version + 1
+      };
+
+      setNotes((current) => current.map((note) => (note.id === updatedNote.id ? updatedNote : note)));
+      return updatedNote;
+    }
+
+    const client = await authenticatedClient();
+    if (!client) {
+      throw new Error("Session is unavailable");
+    }
+
+    const note = await client.updateNote(id, input);
+    setNotes((current) => current.map((item) => (item.id === note.id ? note : item)));
     return note;
   }
 
@@ -1033,6 +1065,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 onCreateActivity={logRecordActivity}
                 onCreateTask={createFollowUpTask}
                 onUpdateActivity={updateRecordActivity}
+                onUpdateNote={updateRecordNote}
                 onCustomFieldDraftChange={updateCustomFieldDraftValue}
                 onSaveCustomFields={saveRecordCustomFields}
               />
@@ -1624,6 +1657,7 @@ function RecordDetailPanel({
   onCreateActivity,
   onCreateTask,
   onUpdateActivity,
+  onUpdateNote,
   onCustomFieldDraftChange,
   onSaveCustomFields
 }: {
@@ -1644,6 +1678,7 @@ function RecordDetailPanel({
   onCreateActivity: (input: CreateActivityInput) => Promise<CRMActivity>;
   onCreateTask: (input: CreateTaskInput) => Promise<Task>;
   onUpdateActivity: (id: string, input: UpdateActivityInput) => Promise<CRMActivity>;
+  onUpdateNote: (id: string, input: UpdateNoteInput) => Promise<Note>;
   onCustomFieldDraftChange: (
     entityType: RecordEntityType,
     recordId: string,
@@ -1706,7 +1741,8 @@ function RecordDetailPanel({
       kind: "note",
       label: "Note",
       title: note.body,
-      detail: note.bodyFormat.replace("_", " ")
+      detail: note.bodyFormat.replace("_", " "),
+      note
     })),
     ...recordTasks.map((task) => ({
       id: task.id,
@@ -1739,6 +1775,10 @@ function RecordDetailPanel({
   const [noteBody, setNoteBody] = useState("");
   const [noteMessage, setNoteMessage] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [noteEditBody, setNoteEditBody] = useState("");
+  const [noteEditMessage, setNoteEditMessage] = useState("");
+  const [savingNoteEdit, setSavingNoteEdit] = useState(false);
   const [activityDraft, setActivityDraft] = useState({
     type: "call" as CRMActivity["type"],
     subject: "",
@@ -1764,6 +1804,9 @@ function RecordDetailPanel({
     setTaskMessage("");
     setNoteBody("");
     setNoteMessage("");
+    setEditingNoteId(null);
+    setNoteEditBody("");
+    setNoteEditMessage("");
     setActivityDraft({
       type: "call",
       subject: "",
@@ -1831,6 +1874,40 @@ function RecordDetailPanel({
       setNoteMessage(errorSummary(error));
     } finally {
       setSavingNote(false);
+    }
+  }
+
+  function startNoteEdit(note: Note) {
+    setEditingNoteId(note.id);
+    setNoteEditBody(note.body);
+    setNoteEditMessage("");
+  }
+
+  function cancelNoteEdit() {
+    setEditingNoteId(null);
+    setNoteEditBody("");
+    setNoteEditMessage("");
+  }
+
+  async function submitNoteEdit(note: Note) {
+    const body = noteEditBody.trim();
+    if (!body || savingNoteEdit) {
+      return;
+    }
+
+    setSavingNoteEdit(true);
+    setNoteEditMessage("");
+    try {
+      await onUpdateNote(note.id, {
+        expectedVersion: note.version,
+        body,
+        bodyFormat: note.bodyFormat
+      });
+      cancelNoteEdit();
+    } catch (error) {
+      setNoteEditMessage(errorSummary(error));
+    } finally {
+      setSavingNoteEdit(false);
     }
   }
 
@@ -2117,7 +2194,34 @@ function RecordDetailPanel({
                 <StatusPill value={item.label} />
                 <span>{formatDateTime(item.at)}</span>
               </div>
-              {editingActivityId === item.id && item.activity ? (
+              {editingNoteId === item.id && item.note ? (
+                <div className="activity-edit-form">
+                  <label>
+                    <span>Note</span>
+                    <textarea
+                      value={noteEditBody}
+                      onChange={(event) => setNoteEditBody(event.target.value)}
+                    />
+                  </label>
+                  <div className="activity-edit-actions">
+                    <button
+                      className="table-action"
+                      disabled={savingNoteEdit || noteEditBody.trim().length === 0}
+                      onClick={() => {
+                        if (item.note) {
+                          submitNoteEdit(item.note);
+                        }
+                      }}
+                    >
+                      <Check size={16} /> Save correction
+                    </button>
+                    <button className="table-action ghost" onClick={cancelNoteEdit}>
+                      <X size={16} /> Cancel
+                    </button>
+                  </div>
+                  {noteEditMessage ? <p className="data-message">{noteEditMessage}</p> : null}
+                </div>
+              ) : editingActivityId === item.id && item.activity ? (
                 <div className="activity-edit-form">
                   <label>
                     <span>Subject</span>
@@ -2172,6 +2276,18 @@ function RecordDetailPanel({
                       }}
                     >
                       <Pencil size={14} /> Edit activity
+                    </button>
+                  ) : null}
+                  {item.note ? (
+                    <button
+                      className="timeline-edit-button"
+                      onClick={() => {
+                        if (item.note) {
+                          startNoteEdit(item.note);
+                        }
+                      }}
+                    >
+                      <Pencil size={14} /> Edit note
                     </button>
                   ) : null}
                 </>

@@ -42,6 +42,7 @@ export const domainEventTypeSchema = z.enum([
   "task.created",
   "task.completed",
   "note.appended",
+  "note.updated",
   "activity.logged",
   "activity.updated"
 ]);

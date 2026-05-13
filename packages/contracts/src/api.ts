@@ -123,6 +123,12 @@ export const appendNoteSchema = z.object({
   bodyFormat: z.enum(["markdown", "html", "plain_text"]).default("plain_text")
 });
 
+export const updateNoteSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  body: z.string().min(1),
+  bodyFormat: z.enum(["markdown", "html", "plain_text"]).optional()
+});
+
 export const createActivitySchema = z.object({
   parent: z.object({ type: entityTypeSchema, id: idSchema }),
   type: z.enum(["call", "email", "meeting", "event", "system"]),
@@ -295,6 +301,7 @@ export type UpdateOpportunityInput = z.infer<typeof updateOpportunitySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
+export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type CreateActivityInput = z.infer<typeof createActivitySchema>;
 export type UpdateActivityInput = z.infer<typeof updateActivitySchema>;
 export type CreateCustomFieldDefinitionInput = z.infer<typeof createCustomFieldDefinitionSchema>;

@@ -54,6 +54,7 @@ import type {
   SearchResult,
   UpdateActivityInput,
   UpdateCustomFieldValuesInput,
+  UpdateNoteInput,
   UpdateOpportunityInput
 } from "@clientloop/contracts";
 import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
@@ -892,6 +893,61 @@ export class PrismaCRMRepository implements CRMRepository {
     });
 
     return this.toNote(note);
+  }
+
+  async updateNote(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateNoteInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Note> {
+    return this.prisma.$transaction(async (tx) => {
+      const currentRecord = await tx.note.findFirst({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId
+        }
+      });
+
+      if (!currentRecord) {
+        throw new Error("Note not found");
+      }
+
+      const current = this.toNote(currentRecord);
+      assertCan(input.principal, "note", "update", targetFromRecord(current));
+      const now = new Date();
+      const nextVersion = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+
+      const result = await tx.note.updateMany({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          version: input.body.expectedVersion
+        },
+        data: {
+          body: input.body.body,
+          bodyFormat: input.body.bodyFormat ?? current.bodyFormat,
+          updatedAt: now,
+          updatedBy: input.principal.user.id,
+          version: nextVersion
+        }
+      });
+
+      if (result.count !== 1) {
+        throw new Error("Version conflict");
+      }
+
+      const persisted = await tx.note.findUniqueOrThrow({
+        where: { id: input.id }
+      });
+      const response = this.toNote(persisted);
+
+      await this.enqueueEvent(tx, "note.updated", "note", response.id, input.principal, now, {
+        version: response.version
+      });
+
+      return response;
+    });
   }
 
   async listActivities(tenantId: TenantId, query: ListQuery): Promise<Page<Activity>> {

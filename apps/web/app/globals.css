@@ -816,6 +816,7 @@ tr:last-child td {
 .activity-composer select,
 .activity-edit-form input,
 .activity-edit-form select,
+.activity-edit-form textarea,
 .note-composer textarea {
   width: 100%;
   min-height: 34px;
@@ -827,7 +828,8 @@ tr:last-child td {
 }
 
 .task-composer textarea,
-.note-composer textarea {
+.note-composer textarea,
+.activity-edit-form textarea {
   min-height: 72px;
   padding-top: 8px;
   resize: vertical;
