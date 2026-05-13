@@ -25,3 +25,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0021-activity-corrections.md](./0021-activity-corrections.md)
 - [0022-note-corrections.md](./0022-note-corrections.md)
 - [0023-task-corrections.md](./0023-task-corrections.md)
+- [0024-task-queue-editing.md](./0024-task-queue-editing.md)

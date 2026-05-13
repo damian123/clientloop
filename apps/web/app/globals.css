@@ -982,7 +982,7 @@ tr:last-child td {
 
 .task-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   min-height: 92px;
@@ -994,6 +994,46 @@ tr:last-child td {
 
 .task-item.done {
   background: #eef8f1;
+}
+
+.task-item-actions {
+  display: grid;
+  gap: 6px;
+}
+
+.task-queue-edit-form {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+}
+
+.task-queue-edit-form label {
+  display: grid;
+  gap: 4px;
+}
+
+.task-queue-edit-form label > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.task-queue-edit-form input,
+.task-queue-edit-form select,
+.task-queue-edit-form textarea {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  background: var(--panel-muted);
+  color: var(--text);
+}
+
+.task-queue-edit-form textarea {
+  min-height: 72px;
+  padding-top: 8px;
+  resize: vertical;
 }
 
 .task-item span,

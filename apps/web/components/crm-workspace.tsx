@@ -1119,6 +1119,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               leads={leads}
               opportunities={opportunities}
               onComplete={completeTask}
+              onUpdateTask={updateRecordTask}
             />
             <Timeline
               activities={activities}
@@ -2589,7 +2590,8 @@ function TaskQueue({
   accountsById,
   contactsById,
   leads,
-  onComplete
+  onComplete,
+  onUpdateTask
 }: {
   tasks: Task[];
   opportunities: Opportunity[];
@@ -2597,9 +2599,50 @@ function TaskQueue({
   contactsById: Map<string, Contact>;
   leads: Lead[];
   onComplete: (task: Task) => void;
+  onUpdateTask: (id: string, input: UpdateTaskInput) => Promise<Task>;
 }) {
   const opportunityById = new Map(opportunities.map((opportunity) => [opportunity.id, opportunity]));
   const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [taskEditDraft, setTaskEditDraft] = useState<TaskEditDraft>(() => emptyTaskEditDraft());
+  const [taskEditMessage, setTaskEditMessage] = useState("");
+  const [savingTaskEdit, setSavingTaskEdit] = useState(false);
+
+  function startEdit(task: Task) {
+    setEditingTaskId(task.id);
+    setTaskEditDraft(taskEditDraftFromTask(task));
+    setTaskEditMessage("");
+  }
+
+  function cancelEdit() {
+    setEditingTaskId(null);
+    setTaskEditDraft(emptyTaskEditDraft());
+    setTaskEditMessage("");
+  }
+
+  async function saveEdit(task: Task) {
+    const title = taskEditDraft.title.trim();
+    if (!title || savingTaskEdit) {
+      return;
+    }
+
+    setSavingTaskEdit(true);
+    setTaskEditMessage("");
+    try {
+      await onUpdateTask(task.id, {
+        expectedVersion: task.version,
+        title,
+        description: taskEditDraft.description.trim() || null,
+        dueAt: taskEditDraft.dueAt || null,
+        priority: taskEditDraft.priority
+      });
+      cancelEdit();
+    } catch (error) {
+      setTaskEditMessage(errorSummary(error));
+    } finally {
+      setSavingTaskEdit(false);
+    }
+  }
 
   return (
     <section className="queue-panel" aria-label="Tasks">
@@ -2631,20 +2674,100 @@ function TaskQueue({
 
           return (
             <article className={`task-item ${task.status === "done" ? "done" : ""}`} key={task.id}>
-              <div>
-                <h4>{task.title}</h4>
-                <p>{parentName}</p>
-                <span>{formatDate(task.dueAt)}</span>
-              </div>
-              <button
-                className="icon-button compact"
-                title="Complete task"
-                aria-label={`Complete ${task.title}`}
-                disabled={task.status === "done"}
-                onClick={() => onComplete(task)}
-              >
-                <Check size={16} />
-              </button>
+              {editingTaskId === task.id ? (
+                <div className="task-queue-edit-form">
+                  <label>
+                    <span>Title</span>
+                    <input
+                      value={taskEditDraft.title}
+                      onChange={(event) =>
+                        setTaskEditDraft((current) => ({ ...current, title: event.target.value }))
+                      }
+                    />
+                  </label>
+                  <div className="activity-payload-grid">
+                    <label>
+                      <span>Due</span>
+                      <input
+                        type="date"
+                        value={taskEditDraft.dueAt}
+                        onChange={(event) =>
+                          setTaskEditDraft((current) => ({ ...current, dueAt: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Priority</span>
+                      <select
+                        value={taskEditDraft.priority}
+                        onChange={(event) =>
+                          setTaskEditDraft((current) => ({
+                            ...current,
+                            priority: event.target.value as Task["priority"]
+                          }))
+                        }
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label>
+                    <span>Description</span>
+                    <textarea
+                      value={taskEditDraft.description}
+                      onChange={(event) =>
+                        setTaskEditDraft((current) => ({
+                          ...current,
+                          description: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="activity-edit-actions">
+                    <button
+                      className="table-action"
+                      disabled={savingTaskEdit || taskEditDraft.title.trim().length === 0}
+                      onClick={() => saveEdit(task)}
+                    >
+                      <Check size={16} /> Save
+                    </button>
+                    <button className="table-action ghost" onClick={cancelEdit}>
+                      <X size={16} /> Cancel
+                    </button>
+                  </div>
+                  {taskEditMessage ? <p className="data-message">{taskEditMessage}</p> : null}
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <h4>{task.title}</h4>
+                    <p>{parentName}</p>
+                    <span>{taskTimelineDetail(task)}</span>
+                  </div>
+                  <div className="task-item-actions">
+                    <button
+                      className="icon-button compact"
+                      title="Edit task"
+                      aria-label={`Edit ${task.title}`}
+                      disabled={task.status === "done"}
+                      onClick={() => startEdit(task)}
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      className="icon-button compact"
+                      title="Complete task"
+                      aria-label={`Complete ${task.title}`}
+                      disabled={task.status === "done"}
+                      onClick={() => onComplete(task)}
+                    >
+                      <Check size={16} />
+                    </button>
+                  </div>
+                </>
+              )}
             </article>
           );
         })}
@@ -3211,6 +3334,15 @@ function emptyTaskEditDraft(): TaskEditDraft {
     description: "",
     dueAt: "",
     priority: "medium"
+  };
+}
+
+function taskEditDraftFromTask(task: Task): TaskEditDraft {
+  return {
+    title: task.title,
+    description: task.description ?? "",
+    dueAt: dateInputValue(task.dueAt),
+    priority: task.priority
   };
 }
 
