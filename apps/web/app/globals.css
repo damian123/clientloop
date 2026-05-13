@@ -678,6 +678,7 @@ tr:last-child td {
   padding: 0 12px;
 }
 
+.record-create-panel,
 .lead-create-panel {
   display: grid;
   gap: 12px;
@@ -688,6 +689,7 @@ tr:last-child td {
   background: var(--panel-muted);
 }
 
+.record-create-form,
 .lead-create-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
@@ -695,17 +697,25 @@ tr:last-child td {
   align-items: end;
 }
 
+.record-create-form {
+  grid-template-columns: repeat(3, minmax(140px, 1fr)) auto;
+}
+
+.record-create-form label,
 .lead-create-form label {
   display: grid;
   gap: 5px;
 }
 
+.record-create-form label > span,
 .lead-create-form label > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 
+.record-create-form input,
+.record-create-form select,
 .lead-create-form input {
   width: 100%;
   min-height: 38px;
@@ -716,6 +726,7 @@ tr:last-child td {
   color: var(--text);
 }
 
+.record-create-actions,
 .lead-create-actions {
   display: flex;
   align-items: center;
@@ -1231,6 +1242,7 @@ tr:last-child td {
   }
 
   .field-form,
+  .record-create-form,
   .lead-create-form,
   .definition-row,
   .activity-payload-grid,
@@ -1238,6 +1250,7 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 
+  .record-create-actions,
   .lead-create-actions {
     align-items: stretch;
     flex-direction: column;

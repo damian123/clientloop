@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppendNoteInput,
   ContactImportPreview,
+  CreateAccountInput,
   CreateActivityInput,
   CreateLeadInput,
   CreateTaskInput,
@@ -76,6 +77,11 @@ type ActivityPayloadDraft = {
 type ActivityEditDraft = {
   subject: string;
   payload: ActivityPayloadDraft;
+};
+type AccountCreateDraft = {
+  name: string;
+  domain: string;
+  status: Account["status"];
 };
 type LeadCreateDraft = {
   contactName: string;
@@ -170,6 +176,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [customFieldValueDrafts, setCustomFieldValueDrafts] = useState<CustomFieldValueDrafts>({});
   const [savingCustomFieldRecordId, setSavingCustomFieldRecordId] = useState<string | null>(null);
   const [customFieldMessage, setCustomFieldMessage] = useState("");
+  const [accountCreateOpen, setAccountCreateOpen] = useState(false);
+  const [accountCreateDraft, setAccountCreateDraft] = useState<AccountCreateDraft>(() => emptyAccountCreateDraft());
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [accountMessage, setAccountMessage] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<SelectedRecordRef | null>(() =>
     parseSelectedRecord(searchParams.get("record"))
   );
@@ -533,6 +543,21 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     changeViewMode("leads");
   }, [changeViewMode]);
 
+  const openAccountCreate = useCallback(() => {
+    setAccountCreateOpen(true);
+    setAccountMessage("");
+    changeViewMode("accounts");
+  }, [changeViewMode]);
+
+  const openContextualCreate = useCallback(() => {
+    if (viewMode === "accounts") {
+      openAccountCreate();
+      return;
+    }
+
+    openLeadCreate();
+  }, [openAccountCreate, openLeadCreate, viewMode]);
+
   useEffect(() => {
     void ensureSession();
   }, [ensureSession]);
@@ -808,6 +833,53 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     const activity = await client.updateActivity(id, input);
     setActivities((current) => current.map((item) => (item.id === activity.id ? activity : item)));
     return activity;
+  }
+
+  async function createAccountFromToolbar() {
+    const input = accountCreateInput(accountCreateDraft);
+    if (!input || creatingAccount) {
+      return;
+    }
+
+    setCreatingAccount(true);
+    setAccountMessage("");
+    try {
+      let account: Account;
+      if (!apiBaseUrl) {
+        const now = new Date().toISOString();
+        account = {
+          id: crypto.randomUUID(),
+          name: input.name,
+          domain: input.domain,
+          ownerUserId: seedManagerId,
+          status: input.status ?? "prospect",
+          customFields: input.customFields ?? {},
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        account = await client.createAccount(input);
+      }
+
+      setAccounts((current) => [account, ...current]);
+      setAccountCreateDraft(emptyAccountCreateDraft());
+      setAccountCreateOpen(false);
+      setAccountMessage(`Created ${account.name}`);
+      openRecordDetail({ entityType: "account", id: account.id }, "accounts");
+    } catch (error) {
+      setAccountMessage(errorSummary(error));
+    } finally {
+      setCreatingAccount(false);
+    }
   }
 
   async function createLeadFromToolbar() {
@@ -1216,7 +1288,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               >
                 <Copy size={18} />
               </button>
-              <button className="command-button" onClick={openLeadCreate}>
+              <button className="command-button" onClick={openContextualCreate}>
                 <Plus size={18} /> New
               </button>
             </div>
@@ -1275,14 +1347,29 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             ) : null}
 
             {viewMode === "accounts" ? (
-              <AccountsView
-                accounts={filteredAccounts}
-                customFieldDefinitions={customFieldsByEntity.get("account") ?? []}
-                opportunities={opportunities}
-                onOpenRecord={(account) =>
-                  openRecordDetail({ entityType: "account", id: account.id }, "accounts")
-                }
-              />
+              <>
+                {accountCreateOpen ? (
+                  <AccountCreateForm
+                    busy={creatingAccount}
+                    draft={accountCreateDraft}
+                    onCancel={() => {
+                      setAccountCreateOpen(false);
+                      setAccountCreateDraft(emptyAccountCreateDraft());
+                    }}
+                    onChange={setAccountCreateDraft}
+                    onSubmit={createAccountFromToolbar}
+                  />
+                ) : null}
+                <AccountsView
+                  accounts={filteredAccounts}
+                  customFieldDefinitions={customFieldsByEntity.get("account") ?? []}
+                  message={accountMessage}
+                  opportunities={opportunities}
+                  onOpenRecord={(account) =>
+                    openRecordDetail({ entityType: "account", id: account.id }, "accounts")
+                  }
+                />
+              </>
             ) : null}
 
             {viewMode === "contacts" ? (
@@ -1623,14 +1710,85 @@ function PipelineView(props: {
   );
 }
 
+function AccountCreateForm({
+  busy,
+  draft,
+  onCancel,
+  onChange,
+  onSubmit
+}: {
+  busy: boolean;
+  draft: AccountCreateDraft;
+  onCancel: () => void;
+  onChange: (draft: AccountCreateDraft) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <section className="record-create-panel" aria-label="Create account">
+      <div className="panel-heading small">
+        <div>
+          <p className="eyebrow">New</p>
+          <h3>Create account</h3>
+        </div>
+      </div>
+      <div className="record-create-form">
+        <label>
+          <span>Account</span>
+          <input
+            value={draft.name}
+            onChange={(event) => onChange({ ...draft, name: event.target.value })}
+            placeholder="Acme Inc."
+          />
+        </label>
+        <label>
+          <span>Domain</span>
+          <input
+            value={draft.domain}
+            onChange={(event) => onChange({ ...draft, domain: event.target.value })}
+            placeholder="acme.example"
+          />
+        </label>
+        <label>
+          <span>Status</span>
+          <select
+            value={draft.status}
+            onChange={(event) =>
+              onChange({ ...draft, status: event.target.value as Account["status"] })
+            }
+          >
+            <option value="prospect">Prospect</option>
+            <option value="customer">Customer</option>
+            <option value="partner">Partner</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </label>
+        <div className="record-create-actions">
+          <button
+            className="command-button"
+            disabled={busy || !accountCreateInput(draft)}
+            onClick={onSubmit}
+          >
+            <Plus size={16} /> Create account
+          </button>
+          <button className="table-action" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AccountsView({
   accounts,
   customFieldDefinitions,
+  message,
   opportunities,
   onOpenRecord
 }: {
   accounts: Account[];
   customFieldDefinitions: CustomFieldDefinition[];
+  message: string;
   opportunities: Opportunity[];
   onOpenRecord: (account: Account) => void;
 }) {
@@ -1689,6 +1847,7 @@ function AccountsView({
           </tbody>
         </table>
       </div>
+      {message ? <p className="data-message">{message}</p> : null}
     </>
   );
 }
@@ -3547,6 +3706,28 @@ function sameSelectedRecord(
   right: SelectedRecordRef | null
 ) {
   return left?.entityType === right?.entityType && left?.id === right?.id;
+}
+
+function emptyAccountCreateDraft(): AccountCreateDraft {
+  return {
+    name: "",
+    domain: "",
+    status: "prospect"
+  };
+}
+
+function accountCreateInput(draft: AccountCreateDraft): CreateAccountInput | null {
+  const name = draft.name.trim();
+  if (!name) {
+    return null;
+  }
+
+  return {
+    name,
+    domain: draft.domain.trim() || undefined,
+    status: draft.status,
+    customFields: {}
+  };
 }
 
 function emptyLeadCreateDraft(): LeadCreateDraft {
