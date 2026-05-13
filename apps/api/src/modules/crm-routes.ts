@@ -23,6 +23,7 @@ import {
   updateTaskSchema
 } from "@clientloop/contracts";
 import { openApiDocument } from "@clientloop/contracts";
+import { assertCan } from "@clientloop/domain";
 import { principalFromRequest } from "../auth";
 import { exportRecordsCsv, previewContactImport } from "../import-export";
 import type { CRMRepository } from "../repository";
@@ -306,7 +307,8 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
   });
 
   app.post("/v1/imports/contacts/preview", async (request) => {
-    await principalFromRequest(request, repository);
+    const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "contact", "create", { tenantId: principal.tenantId });
     return previewContactImport(contactImportRequestSchema.parse(request.body));
   });
 

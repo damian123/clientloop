@@ -696,6 +696,49 @@ describe("CRM API", () => {
     await app.close();
   });
 
+  it("rejects bulk data endpoints without export or create permissions", async () => {
+    const seed = createSeedData();
+    seed.roles = seed.roles.map((role) =>
+      role.name === "Sales Rep"
+        ? {
+            ...role,
+            permissions: role.permissions.filter(
+              (permission) =>
+                permission.action !== "export" &&
+                !(permission.resource === "contact" && permission.action === "create")
+            )
+          }
+        : role
+    );
+    const app = await buildServer({ repository: new InMemoryCRMRepository(seed) });
+    const csv = [
+      "firstName,lastName,email,phone",
+      "Riley,Park,riley.park@example.com,+1 415 555 0188"
+    ].join("\n");
+
+    const exportResponse = await app.inject({
+      method: "GET",
+      url: "/v1/exports/contacts",
+      headers: {
+        "x-user-id": seedUserId
+      }
+    });
+
+    expect(exportResponse.statusCode).toBe(403);
+
+    const previewResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/contacts/preview",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: { csv }
+    });
+
+    expect(previewResponse.statusCode).toBe(403);
+    await app.close();
+  });
+
   it("previews and imports contact CSV", async () => {
     const app = await buildServer({ repository: new InMemoryCRMRepository() });
     const csv = [

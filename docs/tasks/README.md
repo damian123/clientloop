@@ -41,3 +41,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0037-contextual-create-permission-coverage.md](./0037-contextual-create-permission-coverage.md)
 - [0038-object-scope-update-coverage.md](./0038-object-scope-update-coverage.md)
 - [0039-timeline-correction-scope-coverage.md](./0039-timeline-correction-scope-coverage.md)
+- [0040-bulk-data-permission-coverage.md](./0040-bulk-data-permission-coverage.md)
