@@ -31,3 +31,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0027-copy-workspace-link.md](./0027-copy-workspace-link.md)
 - [0028-dashboard-refresh.md](./0028-dashboard-refresh.md)
 - [0029-new-lead-toolbar.md](./0029-new-lead-toolbar.md)
+- [0030-lead-create-validation.md](./0030-lead-create-validation.md)

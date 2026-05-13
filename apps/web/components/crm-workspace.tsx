@@ -1382,6 +1382,8 @@ function LeadCreateForm({
   onChange: (draft: LeadCreateDraft) => void;
   onSubmit: () => void;
 }) {
+  const validationMessage = leadCreateValidationMessage(draft);
+
   return (
     <section className="lead-create-panel" aria-label="Create lead">
       <div className="panel-heading small">
@@ -1410,7 +1412,8 @@ function LeadCreateForm({
         <label>
           <span>Email</span>
           <input
-            type="email"
+            aria-describedby={validationMessage ? "lead-create-validation" : undefined}
+            inputMode="email"
             value={draft.email}
             onChange={(event) => onChange({ ...draft, email: event.target.value })}
             placeholder="taylor@example.com"
@@ -1427,7 +1430,7 @@ function LeadCreateForm({
         <div className="lead-create-actions">
           <button
             className="command-button"
-            disabled={busy || !leadCreateInput(draft)}
+            disabled={busy || Boolean(validationMessage) || !leadCreateInput(draft)}
             onClick={onSubmit}
           >
             <Plus size={16} /> Create lead
@@ -1436,6 +1439,11 @@ function LeadCreateForm({
             Cancel
           </button>
         </div>
+        {validationMessage ? (
+          <p className="lead-create-validation" id="lead-create-validation">
+            {validationMessage}
+          </p>
+        ) : null}
       </div>
     </section>
   );
@@ -3553,8 +3561,9 @@ function emptyLeadCreateDraft(): LeadCreateDraft {
 function leadCreateInput(draft: LeadCreateDraft): CreateLeadInput | null {
   const contactName = draft.contactName.trim();
   const source = draft.source.trim();
+  const email = draft.email.trim();
 
-  if (!contactName || !source) {
+  if (!contactName || !source || !isValidOptionalEmail(email)) {
     return null;
   }
 
@@ -3562,10 +3571,27 @@ function leadCreateInput(draft: LeadCreateDraft): CreateLeadInput | null {
     contactName,
     source,
     companyName: draft.companyName.trim() || undefined,
-    email: draft.email.trim() || undefined,
+    email: email || undefined,
     status: "new",
     customFields: {}
   };
+}
+
+function leadCreateValidationMessage(draft: LeadCreateDraft) {
+  const email = draft.email.trim();
+  if (email && !isValidOptionalEmail(email)) {
+    return "Enter a valid email address or leave email blank.";
+  }
+
+  return "";
+}
+
+function isValidOptionalEmail(value: string) {
+  if (!value) {
+    return true;
+  }
+
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function customFieldDefinitionInput(
