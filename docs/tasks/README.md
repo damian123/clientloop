@@ -37,3 +37,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0033-contextual-opportunity-create.md](./0033-contextual-opportunity-create.md)
 - [0034-create-input-regression-coverage.md](./0034-create-input-regression-coverage.md)
 - [0035-shared-create-form-shell.md](./0035-shared-create-form-shell.md)
+- [0036-contextual-create-api-coverage.md](./0036-contextual-create-api-coverage.md)

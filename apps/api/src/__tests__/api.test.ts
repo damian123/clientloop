@@ -48,6 +48,102 @@ describe("CRM API", () => {
     await app.close();
   });
 
+  it("creates account, contact, and opportunity records for contextual create flows", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+
+    const accountResponse = await app.inject({
+      method: "POST",
+      url: "/v1/accounts",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        name: "Contextual Create Co",
+        domain: "contextual-create.example",
+        status: "prospect",
+        customFields: {}
+      }
+    });
+
+    expect(accountResponse.statusCode).toBe(201);
+    expect(accountResponse.json().name).toBe("Contextual Create Co");
+    expect(accountResponse.json().ownerUserId).toBe(seedManagerId);
+
+    const contactResponse = await app.inject({
+      method: "POST",
+      url: "/v1/contacts",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        accountId: accountResponse.json().id,
+        firstName: "Casey",
+        lastName: "Context",
+        email: "casey.context@example.com",
+        phone: "+1 555 0100",
+        customFields: {}
+      }
+    });
+
+    expect(contactResponse.statusCode).toBe(201);
+    expect(contactResponse.json().accountId).toBe(accountResponse.json().id);
+
+    const opportunityResponse = await app.inject({
+      method: "POST",
+      url: "/v1/opportunities",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        accountId: accountResponse.json().id,
+        primaryContactId: contactResponse.json().id,
+        name: "Contextual expansion",
+        stage: "discovery",
+        amount: 64000,
+        currency: "USD",
+        expectedCloseDate: "2026-06-30",
+        ownerUserId: seedManagerId,
+        probabilityPct: 45,
+        customFields: {}
+      }
+    });
+
+    expect(opportunityResponse.statusCode).toBe(201);
+    expect(opportunityResponse.json().accountId).toBe(accountResponse.json().id);
+    expect(opportunityResponse.json().primaryContactId).toBe(contactResponse.json().id);
+    expect(opportunityResponse.json().amount).toBe(64000);
+    expect(opportunityResponse.json().probabilityPct).toBe(45);
+
+    const dashboardResponse = await app.inject({
+      method: "GET",
+      url: "/v1/dashboard",
+      headers: {
+        "x-user-id": seedManagerId
+      }
+    });
+
+    expect(dashboardResponse.statusCode).toBe(200);
+    expect(
+      dashboardResponse
+        .json()
+        .accounts.some((account: { id: string }) => account.id === accountResponse.json().id)
+    ).toBe(true);
+    expect(
+      dashboardResponse
+        .json()
+        .contacts.some((contact: { id: string }) => contact.id === contactResponse.json().id)
+    ).toBe(true);
+    expect(
+      dashboardResponse
+        .json()
+        .opportunities.some(
+          (opportunity: { id: string }) => opportunity.id === opportunityResponse.json().id
+        )
+    ).toBe(true);
+
+    await app.close();
+  });
+
   it("updates an activity with optimistic concurrency", async () => {
     const app = await buildServer({ repository: new InMemoryCRMRepository() });
     const activity = seedActivities[0]!;
