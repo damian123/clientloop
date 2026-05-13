@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  createSeedData,
   seedAccounts,
   seedActivities,
+  seedContacts,
   seedLeads,
   seedManagerId,
   seedNotes,
   seedOpportunities,
-  seedTasks
+  seedTasks,
+  seedUserId
 } from "@clientloop/domain";
 import { InMemoryCRMRepository } from "../adapters/in-memory-repository";
 import { buildServer } from "../server";
@@ -141,6 +144,73 @@ describe("CRM API", () => {
         )
     ).toBe(true);
 
+    await app.close();
+  });
+
+  it("rejects contextual create endpoints without create permissions", async () => {
+    const seed = createSeedData();
+    seed.roles = seed.roles.map((role) =>
+      role.name === "Sales Rep"
+        ? {
+            ...role,
+            permissions: role.permissions.filter((permission) => permission.action !== "create")
+          }
+        : role
+    );
+    const app = await buildServer({ repository: new InMemoryCRMRepository(seed) });
+
+    const accountResponse = await app.inject({
+      method: "POST",
+      url: "/v1/accounts",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: {
+        name: "Unauthorized Account",
+        status: "prospect",
+        customFields: {}
+      }
+    });
+
+    expect(accountResponse.statusCode).toBe(403);
+
+    const contactResponse = await app.inject({
+      method: "POST",
+      url: "/v1/contacts",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: {
+        accountId: seedAccounts[0]!.id,
+        firstName: "Unauthorized",
+        lastName: "Contact",
+        email: "unauthorized.contact@example.com",
+        customFields: {}
+      }
+    });
+
+    expect(contactResponse.statusCode).toBe(403);
+
+    const opportunityResponse = await app.inject({
+      method: "POST",
+      url: "/v1/opportunities",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: {
+        accountId: seedAccounts[0]!.id,
+        primaryContactId: seedContacts[0]!.id,
+        name: "Unauthorized opportunity",
+        stage: "qualification",
+        amount: 25000,
+        currency: "USD",
+        ownerUserId: seedUserId,
+        probabilityPct: 20,
+        customFields: {}
+      }
+    });
+
+    expect(opportunityResponse.statusCode).toBe(403);
     await app.close();
   });
 
