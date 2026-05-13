@@ -678,6 +678,50 @@ tr:last-child td {
   padding: 0 12px;
 }
 
+.lead-create-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  padding: 14px;
+  background: var(--panel-muted);
+}
+
+.lead-create-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.lead-create-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.lead-create-form label > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.lead-create-form input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.lead-create-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .definition-list {
   display: grid;
   gap: 8px;
@@ -1180,10 +1224,16 @@ tr:last-child td {
   }
 
   .field-form,
+  .lead-create-form,
   .definition-row,
   .activity-payload-grid,
   .task-queue-filters {
     grid-template-columns: 1fr;
+  }
+
+  .lead-create-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .field-options {

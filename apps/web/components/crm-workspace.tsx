@@ -26,6 +26,7 @@ import type {
   AppendNoteInput,
   ContactImportPreview,
   CreateActivityInput,
+  CreateLeadInput,
   CreateTaskInput,
   CreateCustomFieldDefinitionInput,
   DashboardResponse,
@@ -75,6 +76,12 @@ type ActivityPayloadDraft = {
 type ActivityEditDraft = {
   subject: string;
   payload: ActivityPayloadDraft;
+};
+type LeadCreateDraft = {
+  contactName: string;
+  companyName: string;
+  email: string;
+  source: string;
 };
 type TaskEditDraft = {
   title: string;
@@ -169,6 +176,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
   const [leadMessage, setLeadMessage] = useState("");
+  const [leadCreateOpen, setLeadCreateOpen] = useState(false);
+  const [leadCreateDraft, setLeadCreateDraft] = useState<LeadCreateDraft>(() => emptyLeadCreateDraft());
+  const [creatingLead, setCreatingLead] = useState(false);
   const [contactCsv, setContactCsv] = useState("");
   const [importPreview, setImportPreview] = useState<ContactImportPreview | null>(null);
   const [dataMessage, setDataMessage] = useState("");
@@ -517,6 +527,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }, [apiBaseUrl, applyDashboard, authenticatedClient, initialDashboard, refreshingDashboard]);
 
+  const openLeadCreate = useCallback(() => {
+    setLeadCreateOpen(true);
+    setLeadMessage("");
+    changeViewMode("leads");
+  }, [changeViewMode]);
+
   useEffect(() => {
     void ensureSession();
   }, [ensureSession]);
@@ -792,6 +808,54 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     const activity = await client.updateActivity(id, input);
     setActivities((current) => current.map((item) => (item.id === activity.id ? activity : item)));
     return activity;
+  }
+
+  async function createLeadFromToolbar() {
+    const input = leadCreateInput(leadCreateDraft);
+    if (!input || creatingLead) {
+      return;
+    }
+
+    setCreatingLead(true);
+    setLeadMessage("");
+    try {
+      let lead: Lead;
+      if (!apiBaseUrl) {
+        const now = new Date().toISOString();
+        lead = {
+          id: crypto.randomUUID(),
+          source: input.source,
+          companyName: input.companyName,
+          contactName: input.contactName,
+          email: input.email,
+          status: input.status ?? "new",
+          customFields: input.customFields ?? {},
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        lead = await client.createLead(input);
+      }
+
+      setLeads((current) => [lead, ...current]);
+      setLeadCreateDraft(emptyLeadCreateDraft());
+      setLeadCreateOpen(false);
+      setLeadMessage(`Created ${lead.contactName}`);
+      openRecordDetail({ entityType: "lead", id: lead.id }, "leads");
+    } catch (error) {
+      setLeadMessage(errorSummary(error));
+    } finally {
+      setCreatingLead(false);
+    }
   }
 
   async function convertLeadToOpportunity(lead: Lead) {
@@ -1152,7 +1216,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               >
                 <Copy size={18} />
               </button>
-              <button className="command-button">
+              <button className="command-button" onClick={openLeadCreate}>
                 <Plus size={18} /> New
               </button>
             </div>
@@ -1185,15 +1249,29 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             ) : null}
 
             {viewMode === "leads" ? (
-              <LeadsView
-                convertingLeadId={convertingLeadId}
-                leads={filteredLeads}
-                message={leadMessage}
-                onConvert={convertLeadToOpportunity}
-                onOpenRecord={(lead) =>
-                  openRecordDetail({ entityType: "lead", id: lead.id }, "leads")
-                }
-              />
+              <>
+                {leadCreateOpen ? (
+                  <LeadCreateForm
+                    busy={creatingLead}
+                    draft={leadCreateDraft}
+                    onCancel={() => {
+                      setLeadCreateOpen(false);
+                      setLeadCreateDraft(emptyLeadCreateDraft());
+                    }}
+                    onChange={setLeadCreateDraft}
+                    onSubmit={createLeadFromToolbar}
+                  />
+                ) : null}
+                <LeadsView
+                  convertingLeadId={convertingLeadId}
+                  leads={filteredLeads}
+                  message={leadMessage}
+                  onConvert={convertLeadToOpportunity}
+                  onOpenRecord={(lead) =>
+                    openRecordDetail({ entityType: "lead", id: lead.id }, "leads")
+                  }
+                />
+              </>
             ) : null}
 
             {viewMode === "accounts" ? (
@@ -1288,6 +1366,78 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
         </div>
       </section>
     </main>
+  );
+}
+
+function LeadCreateForm({
+  busy,
+  draft,
+  onCancel,
+  onChange,
+  onSubmit
+}: {
+  busy: boolean;
+  draft: LeadCreateDraft;
+  onCancel: () => void;
+  onChange: (draft: LeadCreateDraft) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <section className="lead-create-panel" aria-label="Create lead">
+      <div className="panel-heading small">
+        <div>
+          <p className="eyebrow">New</p>
+          <h3>Create lead</h3>
+        </div>
+      </div>
+      <div className="lead-create-form">
+        <label>
+          <span>Contact</span>
+          <input
+            value={draft.contactName}
+            onChange={(event) => onChange({ ...draft, contactName: event.target.value })}
+            placeholder="Taylor Nguyen"
+          />
+        </label>
+        <label>
+          <span>Company</span>
+          <input
+            value={draft.companyName}
+            onChange={(event) => onChange({ ...draft, companyName: event.target.value })}
+            placeholder="Acme Inc."
+          />
+        </label>
+        <label>
+          <span>Email</span>
+          <input
+            type="email"
+            value={draft.email}
+            onChange={(event) => onChange({ ...draft, email: event.target.value })}
+            placeholder="taylor@example.com"
+          />
+        </label>
+        <label>
+          <span>Source</span>
+          <input
+            value={draft.source}
+            onChange={(event) => onChange({ ...draft, source: event.target.value })}
+            placeholder="Referral"
+          />
+        </label>
+        <div className="lead-create-actions">
+          <button
+            className="command-button"
+            disabled={busy || !leadCreateInput(draft)}
+            onClick={onSubmit}
+          >
+            <Plus size={16} /> Create lead
+          </button>
+          <button className="table-action" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -3389,6 +3539,33 @@ function sameSelectedRecord(
   right: SelectedRecordRef | null
 ) {
   return left?.entityType === right?.entityType && left?.id === right?.id;
+}
+
+function emptyLeadCreateDraft(): LeadCreateDraft {
+  return {
+    contactName: "",
+    companyName: "",
+    email: "",
+    source: ""
+  };
+}
+
+function leadCreateInput(draft: LeadCreateDraft): CreateLeadInput | null {
+  const contactName = draft.contactName.trim();
+  const source = draft.source.trim();
+
+  if (!contactName || !source) {
+    return null;
+  }
+
+  return {
+    contactName,
+    source,
+    companyName: draft.companyName.trim() || undefined,
+    email: draft.email.trim() || undefined,
+    status: "new",
+    customFields: {}
+  };
 }
 
 function customFieldDefinitionInput(
