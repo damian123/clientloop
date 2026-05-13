@@ -40,3 +40,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0036-contextual-create-api-coverage.md](./0036-contextual-create-api-coverage.md)
 - [0037-contextual-create-permission-coverage.md](./0037-contextual-create-permission-coverage.md)
 - [0038-object-scope-update-coverage.md](./0038-object-scope-update-coverage.md)
+- [0039-timeline-correction-scope-coverage.md](./0039-timeline-correction-scope-coverage.md)

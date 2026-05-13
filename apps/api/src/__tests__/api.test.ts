@@ -406,6 +406,72 @@ describe("CRM API", () => {
     await app.close();
   });
 
+  it("rejects timeline corrections outside the principal ownership scope", async () => {
+    const seed = createSeedData();
+    const managerAssignedTask = seed.tasks.find((task) => task.id === seedTasks[1]!.id)!;
+    const managerCreatedNote = seed.notes.find((note) => note.id === seedNotes[0]!.id)!;
+    const managerCreatedActivity = seed.activities.find(
+      (activity) => activity.id === seedActivities[0]!.id
+    )!;
+    managerAssignedTask.assignedUserId = seedManagerId;
+    managerAssignedTask.createdBy = seedManagerId;
+    managerAssignedTask.updatedBy = seedManagerId;
+    managerCreatedNote.createdBy = seedManagerId;
+    managerCreatedNote.updatedBy = seedManagerId;
+    managerCreatedActivity.createdBy = seedManagerId;
+    managerCreatedActivity.updatedBy = seedManagerId;
+    const app = await buildServer({ repository: new InMemoryCRMRepository(seed) });
+
+    const taskResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/tasks/${managerAssignedTask.id}`,
+      headers: {
+        "x-user-id": seedUserId,
+        "If-Match": String(managerAssignedTask.version),
+        "Idempotency-Key": "unauthorized-task-update"
+      },
+      payload: {
+        expectedVersion: managerAssignedTask.version,
+        title: "Unauthorized task update"
+      }
+    });
+
+    expect(taskResponse.statusCode).toBe(403);
+
+    const noteResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/notes/${managerCreatedNote.id}`,
+      headers: {
+        "x-user-id": seedUserId,
+        "If-Match": String(managerCreatedNote.version),
+        "Idempotency-Key": "unauthorized-note-update"
+      },
+      payload: {
+        expectedVersion: managerCreatedNote.version,
+        body: "Unauthorized note update"
+      }
+    });
+
+    expect(noteResponse.statusCode).toBe(403);
+
+    const activityResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/activities/${managerCreatedActivity.id}`,
+      headers: {
+        "x-user-id": seedUserId,
+        "If-Match": String(managerCreatedActivity.version),
+        "Idempotency-Key": "unauthorized-activity-update"
+      },
+      payload: {
+        expectedVersion: managerCreatedActivity.version,
+        subject: "Unauthorized activity update"
+      }
+    });
+
+    expect(activityResponse.statusCode).toBe(403);
+    await app.close();
+  });
+
   it("converts a lead into CRM records", async () => {
     const app = await buildServer({ repository: new InMemoryCRMRepository() });
     const lead = seedLeads[0]!;
