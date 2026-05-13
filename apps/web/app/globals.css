@@ -701,6 +701,14 @@ tr:last-child td {
   grid-template-columns: repeat(3, minmax(140px, 1fr)) auto;
 }
 
+.contact-create-form {
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+}
+
+.contact-create-form .record-create-actions {
+  grid-column: 1 / -1;
+}
+
 .record-create-form label,
 .lead-create-form label {
   display: grid;
@@ -810,6 +818,10 @@ tr:last-child td {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+.data-message.error {
+  color: var(--red);
 }
 
 .detail-panel {

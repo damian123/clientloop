@@ -26,6 +26,7 @@ import type {
   AppendNoteInput,
   ContactImportPreview,
   CreateAccountInput,
+  CreateContactInput,
   CreateActivityInput,
   CreateLeadInput,
   CreateTaskInput,
@@ -82,6 +83,13 @@ type AccountCreateDraft = {
   name: string;
   domain: string;
   status: Account["status"];
+};
+type ContactCreateDraft = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  accountId: string;
 };
 type LeadCreateDraft = {
   contactName: string;
@@ -177,9 +185,17 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [savingCustomFieldRecordId, setSavingCustomFieldRecordId] = useState<string | null>(null);
   const [customFieldMessage, setCustomFieldMessage] = useState("");
   const [accountCreateOpen, setAccountCreateOpen] = useState(false);
-  const [accountCreateDraft, setAccountCreateDraft] = useState<AccountCreateDraft>(() => emptyAccountCreateDraft());
+  const [accountCreateDraft, setAccountCreateDraft] = useState<AccountCreateDraft>(() =>
+    emptyAccountCreateDraft()
+  );
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [accountMessage, setAccountMessage] = useState("");
+  const [contactCreateOpen, setContactCreateOpen] = useState(false);
+  const [contactCreateDraft, setContactCreateDraft] = useState<ContactCreateDraft>(() =>
+    emptyContactCreateDraft()
+  );
+  const [creatingContact, setCreatingContact] = useState(false);
+  const [contactMessage, setContactMessage] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<SelectedRecordRef | null>(() =>
     parseSelectedRecord(searchParams.get("record"))
   );
@@ -187,7 +203,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [convertingLeadId, setConvertingLeadId] = useState<string | null>(null);
   const [leadMessage, setLeadMessage] = useState("");
   const [leadCreateOpen, setLeadCreateOpen] = useState(false);
-  const [leadCreateDraft, setLeadCreateDraft] = useState<LeadCreateDraft>(() => emptyLeadCreateDraft());
+  const [leadCreateDraft, setLeadCreateDraft] = useState<LeadCreateDraft>(() =>
+    emptyLeadCreateDraft()
+  );
   const [creatingLead, setCreatingLead] = useState(false);
   const [contactCsv, setContactCsv] = useState("");
   const [importPreview, setImportPreview] = useState<ContactImportPreview | null>(null);
@@ -549,14 +567,25 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     changeViewMode("accounts");
   }, [changeViewMode]);
 
+  const openContactCreate = useCallback(() => {
+    setContactCreateOpen(true);
+    setContactMessage("");
+    changeViewMode("contacts");
+  }, [changeViewMode]);
+
   const openContextualCreate = useCallback(() => {
     if (viewMode === "accounts") {
       openAccountCreate();
       return;
     }
 
+    if (viewMode === "contacts") {
+      openContactCreate();
+      return;
+    }
+
     openLeadCreate();
-  }, [openAccountCreate, openLeadCreate, viewMode]);
+  }, [openAccountCreate, openContactCreate, openLeadCreate, viewMode]);
 
   useEffect(() => {
     void ensureSession();
@@ -879,6 +908,55 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       setAccountMessage(errorSummary(error));
     } finally {
       setCreatingAccount(false);
+    }
+  }
+
+  async function createContactFromToolbar() {
+    const input = contactCreateInput(contactCreateDraft);
+    if (!input || creatingContact) {
+      return;
+    }
+
+    setCreatingContact(true);
+    setContactMessage("");
+    try {
+      let contact: Contact;
+      if (!apiBaseUrl) {
+        const now = new Date().toISOString();
+        contact = {
+          id: crypto.randomUUID(),
+          accountId: input.accountId ?? null,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email,
+          phone: input.phone,
+          ownerUserId: seedManagerId,
+          customFields: input.customFields ?? {},
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        contact = await client.createContact(input);
+      }
+
+      setContacts((current) => [contact, ...current]);
+      setContactCreateDraft(emptyContactCreateDraft());
+      setContactCreateOpen(false);
+      setContactMessage(`Created ${contact.firstName} ${contact.lastName}`);
+      openRecordDetail({ entityType: "contact", id: contact.id }, "contacts");
+    } catch (error) {
+      setContactMessage(errorSummary(error));
+    } finally {
+      setCreatingContact(false);
     }
   }
 
@@ -1373,14 +1451,30 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             ) : null}
 
             {viewMode === "contacts" ? (
-              <ContactsView
-                accountsById={accountsById}
-                contacts={filteredContacts}
-                customFieldDefinitions={customFieldsByEntity.get("contact") ?? []}
-                onOpenRecord={(contact) =>
-                  openRecordDetail({ entityType: "contact", id: contact.id }, "contacts")
-                }
-              />
+              <>
+                {contactCreateOpen ? (
+                  <ContactCreateForm
+                    accounts={accounts}
+                    busy={creatingContact}
+                    draft={contactCreateDraft}
+                    onCancel={() => {
+                      setContactCreateOpen(false);
+                      setContactCreateDraft(emptyContactCreateDraft());
+                    }}
+                    onChange={setContactCreateDraft}
+                    onSubmit={createContactFromToolbar}
+                  />
+                ) : null}
+                <ContactsView
+                  accountsById={accountsById}
+                  contacts={filteredContacts}
+                  customFieldDefinitions={customFieldsByEntity.get("contact") ?? []}
+                  message={contactMessage}
+                  onOpenRecord={(contact) =>
+                    openRecordDetail({ entityType: "contact", id: contact.id }, "contacts")
+                  }
+                />
+              </>
             ) : null}
 
             {viewMode === "data" ? (
@@ -1852,15 +1946,107 @@ function AccountsView({
   );
 }
 
+function ContactCreateForm({
+  accounts,
+  busy,
+  draft,
+  onCancel,
+  onChange,
+  onSubmit
+}: {
+  accounts: Account[];
+  busy: boolean;
+  draft: ContactCreateDraft;
+  onCancel: () => void;
+  onChange: (draft: ContactCreateDraft) => void;
+  onSubmit: () => void;
+}) {
+  const validationMessage = contactCreateValidationMessage(draft);
+
+  return (
+    <section className="record-create-panel" aria-label="Create contact">
+      <div className="panel-heading small">
+        <div>
+          <p className="eyebrow">New</p>
+          <h3>Create contact</h3>
+        </div>
+      </div>
+      <div className="record-create-form contact-create-form">
+        <label>
+          <span>First name</span>
+          <input
+            value={draft.firstName}
+            onChange={(event) => onChange({ ...draft, firstName: event.target.value })}
+            placeholder="Jordan"
+          />
+        </label>
+        <label>
+          <span>Last name</span>
+          <input
+            value={draft.lastName}
+            onChange={(event) => onChange({ ...draft, lastName: event.target.value })}
+            placeholder="Rivera"
+          />
+        </label>
+        <label>
+          <span>Email</span>
+          <input
+            value={draft.email}
+            onChange={(event) => onChange({ ...draft, email: event.target.value })}
+            placeholder="jordan@example.com"
+          />
+        </label>
+        <label>
+          <span>Phone</span>
+          <input
+            value={draft.phone}
+            onChange={(event) => onChange({ ...draft, phone: event.target.value })}
+            placeholder="+1 415 555 0199"
+          />
+        </label>
+        <label>
+          <span>Account</span>
+          <select
+            value={draft.accountId}
+            onChange={(event) => onChange({ ...draft, accountId: event.target.value })}
+          >
+            <option value="">No account</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="record-create-actions">
+          <button
+            className="command-button"
+            disabled={busy || !contactCreateInput(draft)}
+            onClick={onSubmit}
+          >
+            <Plus size={16} /> Create contact
+          </button>
+          <button className="table-action" disabled={busy} onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
+      {validationMessage ? <p className="data-message error">{validationMessage}</p> : null}
+    </section>
+  );
+}
+
 function ContactsView({
   contacts,
   accountsById,
   customFieldDefinitions,
+  message,
   onOpenRecord
 }: {
   contacts: Contact[];
   accountsById: Map<string, Account>;
   customFieldDefinitions: CustomFieldDefinition[];
+  message: string;
   onOpenRecord: (contact: Contact) => void;
 }) {
   return (
@@ -1911,6 +2097,7 @@ function ContactsView({
           </tbody>
         </table>
       </div>
+      {message ? <p className="data-message">{message}</p> : null}
     </>
   );
 }
@@ -3728,6 +3915,44 @@ function accountCreateInput(draft: AccountCreateDraft): CreateAccountInput | nul
     status: draft.status,
     customFields: {}
   };
+}
+
+function emptyContactCreateDraft(): ContactCreateDraft {
+  return {
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    accountId: ""
+  };
+}
+
+function contactCreateInput(draft: ContactCreateDraft): CreateContactInput | null {
+  const firstName = draft.firstName.trim();
+  const lastName = draft.lastName.trim();
+  const email = draft.email.trim();
+
+  if (!firstName || !lastName || !isValidOptionalEmail(email)) {
+    return null;
+  }
+
+  return {
+    firstName,
+    lastName,
+    accountId: draft.accountId || undefined,
+    email: email || undefined,
+    phone: draft.phone.trim() || undefined,
+    customFields: {}
+  };
+}
+
+function contactCreateValidationMessage(draft: ContactCreateDraft) {
+  const email = draft.email.trim();
+  if (email && !isValidOptionalEmail(email)) {
+    return "Enter a valid email address or leave email blank.";
+  }
+
+  return "";
 }
 
 function emptyLeadCreateDraft(): LeadCreateDraft {
