@@ -356,6 +356,56 @@ describe("CRM API", () => {
     await app.close();
   });
 
+  it("rejects updates to records outside the principal ownership scope", async () => {
+    const seed = createSeedData();
+    const managerOwnedAccount = seed.accounts.find((account) => account.id === seedAccounts[2]!.id)!;
+    const managerOwnedOpportunity = seed.opportunities.find(
+      (opportunity) => opportunity.id === seedOpportunities[2]!.id
+    )!;
+    managerOwnedAccount.ownerUserId = seedManagerId;
+    managerOwnedAccount.createdBy = seedManagerId;
+    managerOwnedAccount.updatedBy = seedManagerId;
+    managerOwnedOpportunity.ownerUserId = seedManagerId;
+    managerOwnedOpportunity.createdBy = seedManagerId;
+    managerOwnedOpportunity.updatedBy = seedManagerId;
+    const app = await buildServer({ repository: new InMemoryCRMRepository(seed) });
+
+    const opportunityResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/opportunities/${managerOwnedOpportunity.id}`,
+      headers: {
+        "x-user-id": seedUserId,
+        "If-Match": String(managerOwnedOpportunity.version),
+        "Idempotency-Key": "unauthorized-opportunity-update"
+      },
+      payload: {
+        expectedVersion: managerOwnedOpportunity.version,
+        stage: "proposal"
+      }
+    });
+
+    expect(opportunityResponse.statusCode).toBe(403);
+
+    const customFieldResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/custom-field-values/account/${managerOwnedAccount.id}`,
+      headers: {
+        "x-user-id": seedUserId,
+        "If-Match": String(managerOwnedAccount.version),
+        "Idempotency-Key": "unauthorized-custom-field-update"
+      },
+      payload: {
+        expectedVersion: managerOwnedAccount.version,
+        customFields: {
+          health_score: 70
+        }
+      }
+    });
+
+    expect(customFieldResponse.statusCode).toBe(403);
+    await app.close();
+  });
+
   it("converts a lead into CRM records", async () => {
     const app = await buildServer({ repository: new InMemoryCRMRepository() });
     const lead = seedLeads[0]!;

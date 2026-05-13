@@ -22,6 +22,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - Tested create-form input builders for account, contact, lead, and opportunity validation.
 - API regression coverage for direct account, contact, and opportunity create flows.
 - Permission-negative API coverage for contextual create endpoints.
+- Object-scope negative API coverage for opportunity and custom-field updates.
 - Outbound webhook subscription APIs plus a worker that delivers signed outbox events with retry backoff.
 - CSV exports for accounts, contacts, and opportunities plus contact CSV import preview and commit workflows.
 - `@clientloop/web` Next.js app with a usable session-backed CRM cockpit: pipeline, leads, accounts, contacts, tasks, activity timeline, search, and custom-field management.
