@@ -227,6 +227,27 @@ button:disabled {
   gap: 8px;
 }
 
+.toolbar-stack {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.share-link-status,
+.share-link-fallback {
+  max-width: min(58vw, 520px);
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.share-link-fallback {
+  overflow-wrap: anywhere;
+  color: var(--accent);
+}
+
 .search-field {
   display: flex;
   align-items: center;
@@ -1132,6 +1153,16 @@ tr:last-child td {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .toolbar-stack {
+    justify-items: stretch;
+  }
+
+  .share-link-status,
+  .share-link-fallback {
+    max-width: 100%;
+    text-align: left;
   }
 
   .search-field {

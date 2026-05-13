@@ -7,6 +7,7 @@ import {
   Check,
   CircleDollarSign,
   ClipboardCheck,
+  Copy,
   Database,
   Download,
   Filter,
@@ -174,6 +175,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [dataBusy, setDataBusy] = useState(false);
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [sessionError, setSessionError] = useState("");
+  const [shareLinkMessage, setShareLinkMessage] = useState("");
   const sessionPromiseRef = useRef<Promise<SessionResponse | null> | null>(null);
 
   useEffect(() => {
@@ -259,6 +261,20 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     setSelectedRecord(null);
     replaceWorkspaceRoute({ record: null });
   }, [replaceWorkspaceRoute]);
+
+  const copyWorkspaceLink = useCallback(async () => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const link = window.location.href;
+    try {
+      await navigator.clipboard.writeText(link);
+      setShareLinkMessage("Link copied");
+    } catch {
+      setShareLinkMessage(link);
+    }
+  }, []);
 
   const changeTaskQueueFilters = useCallback(
     (updates: {
@@ -463,6 +479,15 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   useEffect(() => {
     void ensureSession();
   }, [ensureSession]);
+
+  useEffect(() => {
+    if (!shareLinkMessage || shareLinkMessage.startsWith("http")) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => setShareLinkMessage(""), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [shareLinkMessage]);
 
   async function advanceOpportunity(opportunity: Opportunity) {
     const currentIndex = opportunityStageOrder.indexOf(opportunity.stage);
@@ -1058,22 +1083,37 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             <p className="eyebrow">Sales workspace</p>
             <h2>{viewModeTitle(viewMode)}</h2>
           </div>
-          <div className="toolbar">
-            <label className="search-field">
-              <Search size={17} aria-hidden="true" />
-              <span className="sr-only">Search records</span>
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search records"
-              />
-            </label>
-            <button className="icon-button" title="Refresh" aria-label="Refresh">
-              <RefreshCcw size={18} />
-            </button>
-            <button className="command-button">
-              <Plus size={18} /> New
-            </button>
+          <div className="toolbar-stack">
+            <div className="toolbar">
+              <label className="search-field">
+                <Search size={17} aria-hidden="true" />
+                <span className="sr-only">Search records</span>
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search records"
+                />
+              </label>
+              <button className="icon-button" title="Refresh" aria-label="Refresh">
+                <RefreshCcw size={18} />
+              </button>
+              <button
+                className="icon-button"
+                title="Copy workspace link"
+                aria-label="Copy workspace link"
+                onClick={copyWorkspaceLink}
+              >
+                <Copy size={18} />
+              </button>
+              <button className="command-button">
+                <Plus size={18} /> New
+              </button>
+            </div>
+            {shareLinkMessage ? (
+              <p className={shareLinkMessage.startsWith("http") ? "share-link-fallback" : "share-link-status"}>
+                {shareLinkMessage}
+              </p>
+            ) : null}
           </div>
         </header>
 
