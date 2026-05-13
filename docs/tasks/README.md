@@ -24,3 +24,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0020-expandable-record-timeline.md](./0020-expandable-record-timeline.md)
 - [0021-activity-corrections.md](./0021-activity-corrections.md)
 - [0022-note-corrections.md](./0022-note-corrections.md)
+- [0023-task-corrections.md](./0023-task-corrections.md)

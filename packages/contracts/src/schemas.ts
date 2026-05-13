@@ -41,6 +41,7 @@ export const domainEventTypeSchema = z.enum([
   "opportunity.stage_changed",
   "task.created",
   "task.completed",
+  "task.updated",
   "note.appended",
   "note.updated",
   "activity.logged",

@@ -34,7 +34,8 @@ import type {
   UpdateCustomFieldValuesInput,
   UpdateActivityInput,
   UpdateNoteInput,
-  UpdateOpportunityInput
+  UpdateOpportunityInput,
+  UpdateTaskInput
 } from "@clientloop/contracts";
 import type { OutboxEvent } from "@clientloop/domain";
 
@@ -70,6 +71,12 @@ export interface CRMRepository {
   }): Promise<Opportunity>;
   listTasks(tenantId: TenantId, query: ListQuery): Promise<Page<Task>>;
   createTask(principal: AccessPrincipal, input: CreateTaskInput): Promise<Task>;
+  updateTask(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateTaskInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Task>;
   completeTask(input: {
     principal: AccessPrincipal;
     id: string;

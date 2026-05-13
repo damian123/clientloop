@@ -12,9 +12,10 @@ import {
   convertLeadSchema,
   devLoginSchema,
   exportEntitySchema,
-  updateCustomFieldValuesSchema,
   updateActivitySchema,
+  updateCustomFieldValuesSchema,
   updateNoteSchema,
+  updateTaskSchema,
   type AppendNoteInput,
   type CompleteTaskInput,
   type ContactImportPreview,
@@ -40,7 +41,8 @@ import {
   type UpdateActivityInput,
   type UpdateCustomFieldValuesInput,
   type UpdateNoteInput,
-  type UpdateOpportunityInput
+  type UpdateOpportunityInput,
+  type UpdateTaskInput
 } from "@clientloop/contracts";
 import type {
   Account,
@@ -209,6 +211,21 @@ export class CRMClient {
     return this.request(
       "/v1/tasks",
       this.jsonRequest("POST", createTaskSchema.parse(input)),
+      apiSchemas.task
+    );
+  }
+
+  async updateTask(
+    id: string,
+    input: UpdateTaskInput,
+    options: { idempotencyKey?: string } = {}
+  ): Promise<Task> {
+    return this.request(
+      `/v1/tasks/${id}`,
+      this.jsonRequest("PATCH", updateTaskSchema.parse(input), {
+        "Idempotency-Key": options.idempotencyKey ?? crypto.randomUUID(),
+        "If-Match": String(input.expectedVersion)
+      }),
       apiSchemas.task
     );
   }

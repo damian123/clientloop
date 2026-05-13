@@ -107,6 +107,15 @@ export const openApiDocument = {
         }
       }
     },
+    "/v1/tasks/{id}": {
+      patch: {
+        summary: "Update task with optimistic concurrency",
+        responses: {
+          "200": { description: "Updated" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
     "/v1/notes": {
       post: { summary: "Append note" }
     },

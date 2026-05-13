@@ -55,7 +55,8 @@ import type {
   UpdateActivityInput,
   UpdateCustomFieldValuesInput,
   UpdateNoteInput,
-  UpdateOpportunityInput
+  UpdateOpportunityInput,
+  UpdateTaskInput
 } from "@clientloop/contracts";
 import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
 
@@ -798,6 +799,73 @@ export class PrismaCRMRepository implements CRMRepository {
     });
 
     return this.toTask(task);
+  }
+
+  async updateTask(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateTaskInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Task> {
+    return this.prisma.$transaction(async (tx) => {
+      const currentRecord = await tx.task.findFirst({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          archivedAt: null
+        }
+      });
+
+      if (!currentRecord) {
+        throw new Error("Task not found");
+      }
+
+      const current = this.toTask(currentRecord);
+      assertCan(input.principal, "task", "update", targetFromRecord(current));
+      const now = new Date();
+      const nextVersion = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+
+      const result = await tx.task.updateMany({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          version: input.body.expectedVersion,
+          archivedAt: null
+        },
+        data: {
+          title: input.body.title ?? current.title,
+          description:
+            input.body.description === undefined ? current.description ?? null : input.body.description,
+          priority: input.body.priority ?? current.priority,
+          dueAt:
+            input.body.dueAt === undefined
+              ? current.dueAt
+                ? new Date(current.dueAt)
+                : null
+              : input.body.dueAt
+                ? new Date(input.body.dueAt)
+                : null,
+          updatedAt: now,
+          updatedBy: input.principal.user.id,
+          version: nextVersion
+        }
+      });
+
+      if (result.count !== 1) {
+        throw new Error("Version conflict");
+      }
+
+      const persisted = await tx.task.findUniqueOrThrow({
+        where: { id: input.id }
+      });
+      const response = this.toTask(persisted);
+
+      await this.enqueueEvent(tx, "task.updated", "task", response.id, input.principal, now, {
+        version: response.version
+      });
+
+      return response;
+    });
   }
 
   async completeTask(input: {

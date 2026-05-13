@@ -31,7 +31,8 @@ import type {
   ExportEntity,
   SessionResponse,
   UpdateActivityInput,
-  UpdateNoteInput
+  UpdateNoteInput,
+  UpdateTaskInput
 } from "@clientloop/contracts";
 import type {
   Account,
@@ -74,6 +75,12 @@ type ActivityEditDraft = {
   subject: string;
   payload: ActivityPayloadDraft;
 };
+type TaskEditDraft = {
+  title: string;
+  description: string;
+  dueAt: string;
+  priority: Task["priority"];
+};
 type TimelineItem = {
   id: string;
   at: string;
@@ -84,6 +91,7 @@ type TimelineItem = {
   detail: string;
   activity?: CRMActivity;
   note?: Note;
+  task?: Task;
 };
 type SelectedRecordRef =
   | { entityType: "account"; id: string }
@@ -495,6 +503,39 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
     const task = await client.createTask(input);
     setTasks((current) => [task, ...current]);
+    return task;
+  }
+
+  async function updateRecordTask(id: string, input: UpdateTaskInput) {
+    if (!apiBaseUrl) {
+      const now = new Date().toISOString();
+      const currentTask = tasks.find((task) => task.id === id);
+      if (!currentTask || currentTask.version !== input.expectedVersion) {
+        throw new Error("Version conflict");
+      }
+      const updatedTask: Task = {
+        ...currentTask,
+        title: input.title ?? currentTask.title,
+        description:
+          input.description === undefined ? currentTask.description : input.description ?? null,
+        priority: input.priority ?? currentTask.priority,
+        dueAt: input.dueAt === undefined ? currentTask.dueAt : input.dueAt ?? null,
+        updatedAt: now,
+        updatedBy: seedManagerId,
+        version: currentTask.version + 1
+      };
+
+      setTasks((current) => current.map((task) => (task.id === updatedTask.id ? updatedTask : task)));
+      return updatedTask;
+    }
+
+    const client = await authenticatedClient();
+    if (!client) {
+      throw new Error("Session is unavailable");
+    }
+
+    const task = await client.updateTask(id, input);
+    setTasks((current) => current.map((item) => (item.id === task.id ? task : item)));
     return task;
   }
 
@@ -1066,6 +1107,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 onCreateTask={createFollowUpTask}
                 onUpdateActivity={updateRecordActivity}
                 onUpdateNote={updateRecordNote}
+                onUpdateTask={updateRecordTask}
                 onCustomFieldDraftChange={updateCustomFieldDraftValue}
                 onSaveCustomFields={saveRecordCustomFields}
               />
@@ -1658,6 +1700,7 @@ function RecordDetailPanel({
   onCreateTask,
   onUpdateActivity,
   onUpdateNote,
+  onUpdateTask,
   onCustomFieldDraftChange,
   onSaveCustomFields
 }: {
@@ -1679,6 +1722,7 @@ function RecordDetailPanel({
   onCreateTask: (input: CreateTaskInput) => Promise<Task>;
   onUpdateActivity: (id: string, input: UpdateActivityInput) => Promise<CRMActivity>;
   onUpdateNote: (id: string, input: UpdateNoteInput) => Promise<Note>;
+  onUpdateTask: (id: string, input: UpdateTaskInput) => Promise<Task>;
   onCustomFieldDraftChange: (
     entityType: RecordEntityType,
     recordId: string,
@@ -1751,7 +1795,8 @@ function RecordDetailPanel({
       kind: "task",
       label: "Task",
       title: task.title,
-      detail: `${task.status.replace("_", " ")} / ${task.priority}`
+      detail: taskTimelineDetail(task),
+      task
     }))
   ].sort((left, right) => new Date(right.at).getTime() - new Date(left.at).getTime());
   const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("all");
@@ -1772,6 +1817,10 @@ function RecordDetailPanel({
   });
   const [taskMessage, setTaskMessage] = useState("");
   const [creatingTask, setCreatingTask] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [taskEditDraft, setTaskEditDraft] = useState<TaskEditDraft>(() => emptyTaskEditDraft());
+  const [taskEditMessage, setTaskEditMessage] = useState("");
+  const [savingTaskEdit, setSavingTaskEdit] = useState(false);
   const [noteBody, setNoteBody] = useState("");
   const [noteMessage, setNoteMessage] = useState("");
   const [savingNote, setSavingNote] = useState(false);
@@ -1802,6 +1851,9 @@ function RecordDetailPanel({
       priority: "medium"
     });
     setTaskMessage("");
+    setEditingTaskId(null);
+    setTaskEditDraft(emptyTaskEditDraft());
+    setTaskEditMessage("");
     setNoteBody("");
     setNoteMessage("");
     setEditingNoteId(null);
@@ -1851,6 +1903,47 @@ function RecordDetailPanel({
       setTaskMessage(errorSummary(error));
     } finally {
       setCreatingTask(false);
+    }
+  }
+
+  function startTaskEdit(task: Task) {
+    setEditingTaskId(task.id);
+    setTaskEditDraft({
+      title: task.title,
+      description: task.description ?? "",
+      dueAt: dateInputValue(task.dueAt),
+      priority: task.priority
+    });
+    setTaskEditMessage("");
+  }
+
+  function cancelTaskEdit() {
+    setEditingTaskId(null);
+    setTaskEditDraft(emptyTaskEditDraft());
+    setTaskEditMessage("");
+  }
+
+  async function submitTaskEdit(task: Task) {
+    const title = taskEditDraft.title.trim();
+    if (!title || savingTaskEdit) {
+      return;
+    }
+
+    setSavingTaskEdit(true);
+    setTaskEditMessage("");
+    try {
+      await onUpdateTask(task.id, {
+        expectedVersion: task.version,
+        title,
+        description: taskEditDraft.description.trim() || null,
+        priority: taskEditDraft.priority,
+        dueAt: taskEditDraft.dueAt || null
+      });
+      cancelTaskEdit();
+    } catch (error) {
+      setTaskEditMessage(errorSummary(error));
+    } finally {
+      setSavingTaskEdit(false);
     }
   }
 
@@ -2194,7 +2287,79 @@ function RecordDetailPanel({
                 <StatusPill value={item.label} />
                 <span>{formatDateTime(item.at)}</span>
               </div>
-              {editingNoteId === item.id && item.note ? (
+              {editingTaskId === item.id && item.task ? (
+                <div className="activity-edit-form">
+                  <label>
+                    <span>Title</span>
+                    <input
+                      value={taskEditDraft.title}
+                      onChange={(event) =>
+                        setTaskEditDraft((current) => ({
+                          ...current,
+                          title: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="activity-payload-grid">
+                    <label>
+                      <span>Due</span>
+                      <input
+                        type="date"
+                        value={taskEditDraft.dueAt}
+                        onChange={(event) =>
+                          setTaskEditDraft((current) => ({ ...current, dueAt: event.target.value }))
+                        }
+                      />
+                    </label>
+                    <label>
+                      <span>Priority</span>
+                      <select
+                        value={taskEditDraft.priority}
+                        onChange={(event) =>
+                          setTaskEditDraft((current) => ({
+                            ...current,
+                            priority: event.target.value as Task["priority"]
+                          }))
+                        }
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                      </select>
+                    </label>
+                  </div>
+                  <label>
+                    <span>Description</span>
+                    <textarea
+                      value={taskEditDraft.description}
+                      onChange={(event) =>
+                        setTaskEditDraft((current) => ({
+                          ...current,
+                          description: event.target.value
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="activity-edit-actions">
+                    <button
+                      className="table-action"
+                      disabled={savingTaskEdit || taskEditDraft.title.trim().length === 0}
+                      onClick={() => {
+                        if (item.task) {
+                          submitTaskEdit(item.task);
+                        }
+                      }}
+                    >
+                      <Check size={16} /> Save correction
+                    </button>
+                    <button className="table-action ghost" onClick={cancelTaskEdit}>
+                      <X size={16} /> Cancel
+                    </button>
+                  </div>
+                  {taskEditMessage ? <p className="data-message">{taskEditMessage}</p> : null}
+                </div>
+              ) : editingNoteId === item.id && item.note ? (
                 <div className="activity-edit-form">
                   <label>
                     <span>Note</span>
@@ -2288,6 +2453,18 @@ function RecordDetailPanel({
                       }}
                     >
                       <Pencil size={14} /> Edit note
+                    </button>
+                  ) : null}
+                  {item.task ? (
+                    <button
+                      className="timeline-edit-button"
+                      onClick={() => {
+                        if (item.task) {
+                          startTaskEdit(item.task);
+                        }
+                      }}
+                    >
+                      <Pencil size={14} /> Edit task
                     </button>
                   ) : null}
                 </>
@@ -3026,6 +3203,27 @@ function timelineFilterLabel(filter: TimelineFilter) {
 
 function timelineEmptyMessage(filter: TimelineFilter) {
   return filter === "all" ? "No timeline entries yet" : `No ${timelineFilterLabel(filter).toLowerCase()} yet`;
+}
+
+function emptyTaskEditDraft(): TaskEditDraft {
+  return {
+    title: "",
+    description: "",
+    dueAt: "",
+    priority: "medium"
+  };
+}
+
+function dateInputValue(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : "";
+}
+
+function taskTimelineDetail(task: Task) {
+  return [
+    task.status.replace("_", " "),
+    task.priority,
+    task.dueAt ? `due ${formatDate(task.dueAt)}` : ""
+  ].filter(Boolean).join(" / ");
 }
 
 function emptyActivityPayloadDraft(): ActivityPayloadDraft {

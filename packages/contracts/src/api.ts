@@ -117,6 +117,14 @@ export const completeTaskSchema = z.object({
   expectedVersion: z.number().int().positive()
 });
 
+export const updateTaskSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  title: z.string().min(1).optional(),
+  description: z.string().nullable().optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
+  dueAt: z.string().nullable().optional()
+});
+
 export const appendNoteSchema = z.object({
   parent: z.object({ type: entityTypeSchema, id: idSchema }),
   body: z.string().min(1),
@@ -300,6 +308,7 @@ export type CreateOpportunityInput = z.infer<typeof createOpportunitySchema>;
 export type UpdateOpportunityInput = z.infer<typeof updateOpportunitySchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
+export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type AppendNoteInput = z.infer<typeof appendNoteSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type CreateActivityInput = z.infer<typeof createActivitySchema>;

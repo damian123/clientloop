@@ -256,6 +256,55 @@ describe("CRMClient session support", () => {
     expect(headers.get("if-match")).toBe("1");
     expect(headers.get("idempotency-key")).toBe("note-update-key");
   });
+
+  it("updates tasks with idempotency and optimistic concurrency headers", async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      return jsonResponse({
+        id: "00000000-0000-4000-8000-000000005001",
+        tenantId: seedTenantId,
+        parent: { type: "account", id: "00000000-0000-4000-8000-000000001001" },
+        title: "Corrected task",
+        description: "Corrected task details",
+        status: "open",
+        priority: "high",
+        dueAt: "2026-06-01T00:00:00.000Z",
+        assignedUserId: seedManagerId,
+        createdAt: "2026-05-11T00:00:00.000Z",
+        updatedAt: "2026-05-11T00:00:00.000Z",
+        createdBy: seedManagerId,
+        updatedBy: seedManagerId,
+        version: 2
+      });
+    };
+    const client = new CRMClient({
+      baseUrl: "http://api.test",
+      csrfToken: "csrf-token",
+      fetchImpl
+    });
+
+    const task = await client.updateTask(
+      "00000000-0000-4000-8000-000000005001",
+      {
+        expectedVersion: 1,
+        title: "Corrected task",
+        description: "Corrected task details",
+        priority: "high",
+        dueAt: "2026-06-01"
+      },
+      { idempotencyKey: "task-update-key" }
+    );
+
+    expect(task.title).toBe("Corrected task");
+    expect(calls[0]!.url).toBe(
+      "http://api.test/v1/tasks/00000000-0000-4000-8000-000000005001"
+    );
+    const headers = new Headers(calls[0]!.init.headers);
+    expect(headers.get("x-csrf-token")).toBe("csrf-token");
+    expect(headers.get("if-match")).toBe("1");
+    expect(headers.get("idempotency-key")).toBe("task-update-key");
+  });
 });
 
 function customFieldDefinitionResponse() {

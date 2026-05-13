@@ -5,7 +5,8 @@ import {
   seedLeads,
   seedManagerId,
   seedNotes,
-  seedOpportunities
+  seedOpportunities,
+  seedTasks
 } from "@clientloop/domain";
 import { InMemoryCRMRepository } from "../adapters/in-memory-repository";
 import { buildServer } from "../server";
@@ -121,6 +122,50 @@ describe("CRM API", () => {
       payload: {
         expectedVersion: note.version,
         body: "Stale note correction"
+      }
+    });
+
+    expect(staleResponse.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("updates a task with optimistic concurrency", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+    const task = seedTasks[0]!;
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/v1/tasks/${task.id}`,
+      headers: {
+        "x-user-id": seedManagerId,
+        "If-Match": String(task.version),
+        "Idempotency-Key": "task-update-test"
+      },
+      payload: {
+        expectedVersion: task.version,
+        title: "Corrected task title",
+        description: "Corrected task description",
+        dueAt: "2026-06-01",
+        priority: "high"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().title).toBe("Corrected task title");
+    expect(response.json().description).toBe("Corrected task description");
+    expect(response.json().dueAt).toContain("2026-06-01");
+    expect(response.json().priority).toBe("high");
+    expect(response.json().version).toBe(task.version + 1);
+
+    const staleResponse = await app.inject({
+      method: "PATCH",
+      url: `/v1/tasks/${task.id}`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        expectedVersion: task.version,
+        title: "Stale task correction"
       }
     });
 

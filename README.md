@@ -14,7 +14,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - Custom field value editing for CRM records with validation and optimistic concurrency.
 - Account, contact, lead, and opportunity detail panels for focused record context and custom field editing.
 - URL-backed workspace state for shareable view and record detail links.
-- Follow-up task creation from record detail panels with linked task queue context.
+- Follow-up task creation and inline task corrections from record detail timelines.
 - Plain-text note composition and inline note corrections from record detail timelines.
 - Activity logging and correction for calls, emails, meetings, and events from record detail panels, including type-specific payload fields.
 - Unified expandable record timeline in detail panels with filters for notes, tasks, and activities.

@@ -50,7 +50,8 @@ import type {
   UpdateActivityInput,
   UpdateCustomFieldValuesInput,
   UpdateNoteInput,
-  UpdateOpportunityInput
+  UpdateOpportunityInput,
+  UpdateTaskInput
 } from "@clientloop/contracts";
 import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
 
@@ -432,6 +433,42 @@ export class InMemoryCRMRepository implements CRMRepository {
     this.store.tasks.unshift(task);
     this.enqueueEvent("task.created", "task", task.id, principal, now, { title: task.title });
     return task;
+  }
+
+  async updateTask(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateTaskInput;
+    idempotencyKey?: string | undefined;
+  }): Promise<Task> {
+    const index = this.store.tasks.findIndex(
+      (task) => task.tenantId === input.principal.tenantId && task.id === input.id
+    );
+
+    if (index < 0) {
+      throw new Error("Task not found");
+    }
+
+    const current = this.store.tasks[index]!;
+    assertCan(input.principal, "task", "update", targetFromRecord(current));
+    const now = new Date().toISOString();
+    const updated: Task = {
+      ...current,
+      title: input.body.title ?? current.title,
+      description:
+        input.body.description === undefined ? current.description : input.body.description ?? undefined,
+      priority: input.body.priority ?? current.priority,
+      dueAt: input.body.dueAt === undefined ? current.dueAt : input.body.dueAt ?? undefined,
+      updatedAt: now,
+      updatedBy: input.principal.user.id,
+      version: this.assertExpectedVersion(current, input.body.expectedVersion) + 1
+    };
+
+    this.store.tasks[index] = updated;
+    this.enqueueEvent("task.updated", "task", updated.id, input.principal, now, {
+      version: updated.version
+    });
+    return updated;
   }
 
   async completeTask(input: {
