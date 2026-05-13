@@ -175,7 +175,8 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [dataBusy, setDataBusy] = useState(false);
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [sessionError, setSessionError] = useState("");
-  const [shareLinkMessage, setShareLinkMessage] = useState("");
+  const [toolbarMessage, setToolbarMessage] = useState("");
+  const [refreshingDashboard, setRefreshingDashboard] = useState(false);
   const sessionPromiseRef = useRef<Promise<SessionResponse | null> | null>(null);
 
   useEffect(() => {
@@ -270,10 +271,21 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     const link = window.location.href;
     try {
       await navigator.clipboard.writeText(link);
-      setShareLinkMessage("Link copied");
+      setToolbarMessage("Link copied");
     } catch {
-      setShareLinkMessage(link);
+      setToolbarMessage(link);
     }
+  }, []);
+
+  const applyDashboard = useCallback((dashboard: DashboardResponse) => {
+    setAccounts(dashboard.accounts);
+    setLeads(dashboard.leads);
+    setOpportunities(dashboard.opportunities);
+    setContacts(dashboard.contacts);
+    setTasks(dashboard.tasks);
+    setNotes(dashboard.notes);
+    setActivities(dashboard.activities);
+    setCustomFieldDefinitions(dashboard.customFieldDefinitions);
   }, []);
 
   const changeTaskQueueFilters = useCallback(
@@ -476,18 +488,47 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     });
   }, [apiBaseUrl, ensureSession]);
 
+  const refreshDashboard = useCallback(async () => {
+    if (refreshingDashboard) {
+      return;
+    }
+
+    setRefreshingDashboard(true);
+    setToolbarMessage("");
+    try {
+      if (!apiBaseUrl) {
+        applyDashboard(initialDashboard);
+        setToolbarMessage("Workspace refreshed");
+        return;
+      }
+
+      const client = await authenticatedClient();
+      if (!client) {
+        throw new Error("Session is unavailable");
+      }
+
+      const dashboard = await client.dashboard();
+      applyDashboard(dashboard);
+      setToolbarMessage("Workspace refreshed");
+    } catch (error) {
+      setToolbarMessage(errorSummary(error));
+    } finally {
+      setRefreshingDashboard(false);
+    }
+  }, [apiBaseUrl, applyDashboard, authenticatedClient, initialDashboard, refreshingDashboard]);
+
   useEffect(() => {
     void ensureSession();
   }, [ensureSession]);
 
   useEffect(() => {
-    if (!shareLinkMessage || shareLinkMessage.startsWith("http")) {
+    if (!toolbarMessage || toolbarMessage.startsWith("http")) {
       return;
     }
 
-    const timeout = window.setTimeout(() => setShareLinkMessage(""), 2400);
+    const timeout = window.setTimeout(() => setToolbarMessage(""), 2400);
     return () => window.clearTimeout(timeout);
-  }, [shareLinkMessage]);
+  }, [toolbarMessage]);
 
   async function advanceOpportunity(opportunity: Opportunity) {
     const currentIndex = opportunityStageOrder.indexOf(opportunity.stage);
@@ -1094,7 +1135,13 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                   placeholder="Search records"
                 />
               </label>
-              <button className="icon-button" title="Refresh" aria-label="Refresh">
+              <button
+                className="icon-button"
+                title="Refresh"
+                aria-label="Refresh"
+                disabled={refreshingDashboard}
+                onClick={refreshDashboard}
+              >
                 <RefreshCcw size={18} />
               </button>
               <button
@@ -1109,9 +1156,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 <Plus size={18} /> New
               </button>
             </div>
-            {shareLinkMessage ? (
-              <p className={shareLinkMessage.startsWith("http") ? "share-link-fallback" : "share-link-status"}>
-                {shareLinkMessage}
+            {toolbarMessage ? (
+              <p className={toolbarMessage.startsWith("http") ? "toolbar-fallback" : "toolbar-status"}>
+                {toolbarMessage}
               </p>
             ) : null}
           </div>

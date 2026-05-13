@@ -233,8 +233,8 @@ button:disabled {
   gap: 6px;
 }
 
-.share-link-status,
-.share-link-fallback {
+.toolbar-status,
+.toolbar-fallback {
   max-width: min(58vw, 520px);
   margin: 0;
   color: var(--muted);
@@ -243,7 +243,7 @@ button:disabled {
   text-align: right;
 }
 
-.share-link-fallback {
+.toolbar-fallback {
   overflow-wrap: anywhere;
   color: var(--accent);
 }
@@ -1159,8 +1159,8 @@ tr:last-child td {
     justify-items: stretch;
   }
 
-  .share-link-status,
-  .share-link-fallback {
+  .toolbar-status,
+  .toolbar-fallback {
     max-width: 100%;
     text-align: left;
   }

@@ -29,3 +29,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0025-task-queue-filters.md](./0025-task-queue-filters.md)
 - [0026-task-filter-deep-links.md](./0026-task-filter-deep-links.md)
 - [0027-copy-workspace-link.md](./0027-copy-workspace-link.md)
+- [0028-dashboard-refresh.md](./0028-dashboard-refresh.md)
