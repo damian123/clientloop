@@ -678,8 +678,7 @@ tr:last-child td {
   padding: 0 12px;
 }
 
-.record-create-panel,
-.lead-create-panel {
+.record-create-panel {
   display: grid;
   gap: 12px;
   border: 1px solid var(--line);
@@ -689,8 +688,7 @@ tr:last-child td {
   background: var(--panel-muted);
 }
 
-.record-create-form,
-.lead-create-form {
+.record-create-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
   gap: 10px;
@@ -710,26 +708,24 @@ tr:last-child td {
 }
 
 .contact-create-form .record-create-actions,
+.lead-create-form .record-create-actions,
 .opportunity-create-form .record-create-actions {
   grid-column: 1 / -1;
 }
 
-.record-create-form label,
-.lead-create-form label {
+.record-create-form label {
   display: grid;
   gap: 5px;
 }
 
-.record-create-form label > span,
-.lead-create-form label > span {
+.record-create-form label > span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 
 .record-create-form input,
-.record-create-form select,
-.lead-create-form input {
+.record-create-form select {
   width: 100%;
   min-height: 38px;
   border: 1px solid var(--line);
@@ -739,18 +735,10 @@ tr:last-child td {
   color: var(--text);
 }
 
-.record-create-actions,
-.lead-create-actions {
+.record-create-actions {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.lead-create-validation {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: var(--red);
-  font-size: 13px;
 }
 
 .definition-list {
@@ -1260,15 +1248,13 @@ tr:last-child td {
 
   .field-form,
   .record-create-form,
-  .lead-create-form,
   .definition-row,
   .activity-payload-grid,
   .task-queue-filters {
     grid-template-columns: 1fr;
   }
 
-  .record-create-actions,
-  .lead-create-actions {
+  .record-create-actions {
     align-items: stretch;
     flex-direction: column;
   }

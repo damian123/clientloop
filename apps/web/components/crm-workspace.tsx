@@ -21,6 +21,7 @@ import {
   X
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppendNoteInput,
@@ -1651,67 +1652,112 @@ function LeadCreateForm({
   const validationMessage = leadCreateValidationMessage(draft);
 
   return (
-    <section className="lead-create-panel" aria-label="Create lead">
+    <RecordCreatePanel
+      formClassName="lead-create-form"
+      title="lead"
+      validationId="lead-create-validation"
+      validationMessage={validationMessage}
+    >
+      <label>
+        <span>Contact</span>
+        <input
+          value={draft.contactName}
+          onChange={(event) => onChange({ ...draft, contactName: event.target.value })}
+          placeholder="Taylor Nguyen"
+        />
+      </label>
+      <label>
+        <span>Company</span>
+        <input
+          value={draft.companyName}
+          onChange={(event) => onChange({ ...draft, companyName: event.target.value })}
+          placeholder="Acme Inc."
+        />
+      </label>
+      <label>
+        <span>Email</span>
+        <input
+          aria-describedby={validationMessage ? "lead-create-validation" : undefined}
+          inputMode="email"
+          value={draft.email}
+          onChange={(event) => onChange({ ...draft, email: event.target.value })}
+          placeholder="taylor@example.com"
+        />
+      </label>
+      <label>
+        <span>Source</span>
+        <input
+          value={draft.source}
+          onChange={(event) => onChange({ ...draft, source: event.target.value })}
+          placeholder="Referral"
+        />
+      </label>
+      <RecordCreateActions
+        busy={busy}
+        disabled={Boolean(validationMessage) || !leadCreateInput(draft)}
+        label="Create lead"
+        onCancel={onCancel}
+        onSubmit={onSubmit}
+      />
+    </RecordCreatePanel>
+  );
+}
+
+function RecordCreatePanel({
+  children,
+  formClassName,
+  title,
+  validationId,
+  validationMessage
+}: {
+  children: ReactNode;
+  formClassName?: string;
+  title: string;
+  validationId?: string;
+  validationMessage?: string;
+}) {
+  const formClasses = ["record-create-form", formClassName].filter(Boolean).join(" ");
+
+  return (
+    <section className="record-create-panel" aria-label={`Create ${title}`}>
       <div className="panel-heading small">
         <div>
           <p className="eyebrow">New</p>
-          <h3>Create lead</h3>
+          <h3>Create {title}</h3>
         </div>
       </div>
-      <div className="lead-create-form">
-        <label>
-          <span>Contact</span>
-          <input
-            value={draft.contactName}
-            onChange={(event) => onChange({ ...draft, contactName: event.target.value })}
-            placeholder="Taylor Nguyen"
-          />
-        </label>
-        <label>
-          <span>Company</span>
-          <input
-            value={draft.companyName}
-            onChange={(event) => onChange({ ...draft, companyName: event.target.value })}
-            placeholder="Acme Inc."
-          />
-        </label>
-        <label>
-          <span>Email</span>
-          <input
-            aria-describedby={validationMessage ? "lead-create-validation" : undefined}
-            inputMode="email"
-            value={draft.email}
-            onChange={(event) => onChange({ ...draft, email: event.target.value })}
-            placeholder="taylor@example.com"
-          />
-        </label>
-        <label>
-          <span>Source</span>
-          <input
-            value={draft.source}
-            onChange={(event) => onChange({ ...draft, source: event.target.value })}
-            placeholder="Referral"
-          />
-        </label>
-        <div className="lead-create-actions">
-          <button
-            className="command-button"
-            disabled={busy || Boolean(validationMessage) || !leadCreateInput(draft)}
-            onClick={onSubmit}
-          >
-            <Plus size={16} /> Create lead
-          </button>
-          <button className="table-action" disabled={busy} onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-        {validationMessage ? (
-          <p className="lead-create-validation" id="lead-create-validation">
-            {validationMessage}
-          </p>
-        ) : null}
-      </div>
+      <div className={formClasses}>{children}</div>
+      {validationMessage ? (
+        <p className="data-message error" id={validationId}>
+          {validationMessage}
+        </p>
+      ) : null}
     </section>
+  );
+}
+
+function RecordCreateActions({
+  busy,
+  disabled,
+  label,
+  onCancel,
+  onSubmit
+}: {
+  busy: boolean;
+  disabled: boolean;
+  label: string;
+  onCancel: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="record-create-actions">
+      <button className="command-button" disabled={busy || disabled} onClick={onSubmit}>
+        <Plus size={16} /> {label}
+      </button>
+      <button className="table-action" disabled={busy} onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
   );
 }
 
@@ -1914,109 +1960,99 @@ function OpportunityCreateForm({
   const validationMessage = opportunityCreateValidationMessage(draft);
 
   return (
-    <section className="record-create-panel" aria-label="Create opportunity">
-      <div className="panel-heading small">
-        <div>
-          <p className="eyebrow">New</p>
-          <h3>Create opportunity</h3>
-        </div>
-      </div>
-      <div className="record-create-form opportunity-create-form">
-        <label>
-          <span>Opportunity</span>
-          <input
-            value={draft.name}
-            onChange={(event) => onChange({ ...draft, name: event.target.value })}
-            placeholder="Expansion deal"
-          />
-        </label>
-        <label>
-          <span>Account</span>
-          <select
-            value={draft.accountId}
-            onChange={(event) =>
-              onChange({ ...draft, accountId: event.target.value, primaryContactId: "" })
-            }
-          >
-            <option value="">Select account</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Contact</span>
-          <select
-            value={draft.primaryContactId}
-            disabled={!draft.accountId || accountContacts.length === 0}
-            onChange={(event) => onChange({ ...draft, primaryContactId: event.target.value })}
-          >
-            <option value="">No primary contact</option>
-            {accountContacts.map((contact) => (
-              <option key={contact.id} value={contact.id}>
-                {contact.firstName} {contact.lastName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Stage</span>
-          <select
-            value={draft.stage}
-            onChange={(event) =>
-              onChange({ ...draft, stage: event.target.value as OpportunityStage })
-            }
-          >
-            {opportunityStageOrder.slice(0, 4).map((stage) => (
-              <option key={stage} value={stage}>
-                {stageLabels[stage]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Amount</span>
-          <input
-            inputMode="decimal"
-            value={draft.amount}
-            onChange={(event) => onChange({ ...draft, amount: event.target.value })}
-            placeholder="50000"
-          />
-        </label>
-        <label>
-          <span>Close date</span>
-          <input
-            type="date"
-            value={draft.expectedCloseDate}
-            onChange={(event) => onChange({ ...draft, expectedCloseDate: event.target.value })}
-          />
-        </label>
-        <label>
-          <span>Probability</span>
-          <input
-            inputMode="numeric"
-            value={draft.probabilityPct}
-            onChange={(event) => onChange({ ...draft, probabilityPct: event.target.value })}
-            placeholder="40"
-          />
-        </label>
-        <div className="record-create-actions">
-          <button
-            className="command-button"
-            disabled={busy || !opportunityCreateInput(draft, seedManagerId)}
-            onClick={onSubmit}
-          >
-            <Plus size={16} /> Create opportunity
-          </button>
-          <button className="table-action" disabled={busy} onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-      {validationMessage ? <p className="data-message error">{validationMessage}</p> : null}
-    </section>
+    <RecordCreatePanel
+      formClassName="opportunity-create-form"
+      title="opportunity"
+      validationMessage={validationMessage}
+    >
+      <label>
+        <span>Opportunity</span>
+        <input
+          value={draft.name}
+          onChange={(event) => onChange({ ...draft, name: event.target.value })}
+          placeholder="Expansion deal"
+        />
+      </label>
+      <label>
+        <span>Account</span>
+        <select
+          value={draft.accountId}
+          onChange={(event) =>
+            onChange({ ...draft, accountId: event.target.value, primaryContactId: "" })
+          }
+        >
+          <option value="">Select account</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Contact</span>
+        <select
+          value={draft.primaryContactId}
+          disabled={!draft.accountId || accountContacts.length === 0}
+          onChange={(event) => onChange({ ...draft, primaryContactId: event.target.value })}
+        >
+          <option value="">No primary contact</option>
+          {accountContacts.map((contact) => (
+            <option key={contact.id} value={contact.id}>
+              {contact.firstName} {contact.lastName}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Stage</span>
+        <select
+          value={draft.stage}
+          onChange={(event) =>
+            onChange({ ...draft, stage: event.target.value as OpportunityStage })
+          }
+        >
+          {opportunityStageOrder.slice(0, 4).map((stage) => (
+            <option key={stage} value={stage}>
+              {stageLabels[stage]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        <span>Amount</span>
+        <input
+          inputMode="decimal"
+          value={draft.amount}
+          onChange={(event) => onChange({ ...draft, amount: event.target.value })}
+          placeholder="50000"
+        />
+      </label>
+      <label>
+        <span>Close date</span>
+        <input
+          type="date"
+          value={draft.expectedCloseDate}
+          onChange={(event) => onChange({ ...draft, expectedCloseDate: event.target.value })}
+        />
+      </label>
+      <label>
+        <span>Probability</span>
+        <input
+          inputMode="numeric"
+          value={draft.probabilityPct}
+          onChange={(event) => onChange({ ...draft, probabilityPct: event.target.value })}
+          placeholder="40"
+        />
+      </label>
+      <RecordCreateActions
+        busy={busy}
+        disabled={!opportunityCreateInput(draft, seedManagerId)}
+        label="Create opportunity"
+        onCancel={onCancel}
+        onSubmit={onSubmit}
+      />
+    </RecordCreatePanel>
   );
 }
 
@@ -2034,58 +2070,45 @@ function AccountCreateForm({
   onSubmit: () => void;
 }) {
   return (
-    <section className="record-create-panel" aria-label="Create account">
-      <div className="panel-heading small">
-        <div>
-          <p className="eyebrow">New</p>
-          <h3>Create account</h3>
-        </div>
-      </div>
-      <div className="record-create-form">
-        <label>
-          <span>Account</span>
-          <input
-            value={draft.name}
-            onChange={(event) => onChange({ ...draft, name: event.target.value })}
-            placeholder="Acme Inc."
-          />
-        </label>
-        <label>
-          <span>Domain</span>
-          <input
-            value={draft.domain}
-            onChange={(event) => onChange({ ...draft, domain: event.target.value })}
-            placeholder="acme.example"
-          />
-        </label>
-        <label>
-          <span>Status</span>
-          <select
-            value={draft.status}
-            onChange={(event) =>
-              onChange({ ...draft, status: event.target.value as Account["status"] })
-            }
-          >
-            <option value="prospect">Prospect</option>
-            <option value="customer">Customer</option>
-            <option value="partner">Partner</option>
-            <option value="inactive">Inactive</option>
-          </select>
-        </label>
-        <div className="record-create-actions">
-          <button
-            className="command-button"
-            disabled={busy || !accountCreateInput(draft)}
-            onClick={onSubmit}
-          >
-            <Plus size={16} /> Create account
-          </button>
-          <button className="table-action" disabled={busy} onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </section>
+    <RecordCreatePanel title="account">
+      <label>
+        <span>Account</span>
+        <input
+          value={draft.name}
+          onChange={(event) => onChange({ ...draft, name: event.target.value })}
+          placeholder="Acme Inc."
+        />
+      </label>
+      <label>
+        <span>Domain</span>
+        <input
+          value={draft.domain}
+          onChange={(event) => onChange({ ...draft, domain: event.target.value })}
+          placeholder="acme.example"
+        />
+      </label>
+      <label>
+        <span>Status</span>
+        <select
+          value={draft.status}
+          onChange={(event) =>
+            onChange({ ...draft, status: event.target.value as Account["status"] })
+          }
+        >
+          <option value="prospect">Prospect</option>
+          <option value="customer">Customer</option>
+          <option value="partner">Partner</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </label>
+      <RecordCreateActions
+        busy={busy}
+        disabled={!accountCreateInput(draft)}
+        label="Create account"
+        onCancel={onCancel}
+        onSubmit={onSubmit}
+      />
+    </RecordCreatePanel>
   );
 }
 
@@ -2180,75 +2203,65 @@ function ContactCreateForm({
   const validationMessage = contactCreateValidationMessage(draft);
 
   return (
-    <section className="record-create-panel" aria-label="Create contact">
-      <div className="panel-heading small">
-        <div>
-          <p className="eyebrow">New</p>
-          <h3>Create contact</h3>
-        </div>
-      </div>
-      <div className="record-create-form contact-create-form">
-        <label>
-          <span>First name</span>
-          <input
-            value={draft.firstName}
-            onChange={(event) => onChange({ ...draft, firstName: event.target.value })}
-            placeholder="Jordan"
-          />
-        </label>
-        <label>
-          <span>Last name</span>
-          <input
-            value={draft.lastName}
-            onChange={(event) => onChange({ ...draft, lastName: event.target.value })}
-            placeholder="Rivera"
-          />
-        </label>
-        <label>
-          <span>Email</span>
-          <input
-            value={draft.email}
-            onChange={(event) => onChange({ ...draft, email: event.target.value })}
-            placeholder="jordan@example.com"
-          />
-        </label>
-        <label>
-          <span>Phone</span>
-          <input
-            value={draft.phone}
-            onChange={(event) => onChange({ ...draft, phone: event.target.value })}
-            placeholder="+1 415 555 0199"
-          />
-        </label>
-        <label>
-          <span>Account</span>
-          <select
-            value={draft.accountId}
-            onChange={(event) => onChange({ ...draft, accountId: event.target.value })}
-          >
-            <option value="">No account</option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="record-create-actions">
-          <button
-            className="command-button"
-            disabled={busy || !contactCreateInput(draft)}
-            onClick={onSubmit}
-          >
-            <Plus size={16} /> Create contact
-          </button>
-          <button className="table-action" disabled={busy} onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-      {validationMessage ? <p className="data-message error">{validationMessage}</p> : null}
-    </section>
+    <RecordCreatePanel
+      formClassName="contact-create-form"
+      title="contact"
+      validationMessage={validationMessage}
+    >
+      <label>
+        <span>First name</span>
+        <input
+          value={draft.firstName}
+          onChange={(event) => onChange({ ...draft, firstName: event.target.value })}
+          placeholder="Jordan"
+        />
+      </label>
+      <label>
+        <span>Last name</span>
+        <input
+          value={draft.lastName}
+          onChange={(event) => onChange({ ...draft, lastName: event.target.value })}
+          placeholder="Rivera"
+        />
+      </label>
+      <label>
+        <span>Email</span>
+        <input
+          value={draft.email}
+          onChange={(event) => onChange({ ...draft, email: event.target.value })}
+          placeholder="jordan@example.com"
+        />
+      </label>
+      <label>
+        <span>Phone</span>
+        <input
+          value={draft.phone}
+          onChange={(event) => onChange({ ...draft, phone: event.target.value })}
+          placeholder="+1 415 555 0199"
+        />
+      </label>
+      <label>
+        <span>Account</span>
+        <select
+          value={draft.accountId}
+          onChange={(event) => onChange({ ...draft, accountId: event.target.value })}
+        >
+          <option value="">No account</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <RecordCreateActions
+        busy={busy}
+        disabled={!contactCreateInput(draft)}
+        label="Create contact"
+        onCancel={onCancel}
+        onSubmit={onSubmit}
+      />
+    </RecordCreatePanel>
   );
 }
 
