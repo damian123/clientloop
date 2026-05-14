@@ -127,12 +127,13 @@ The web app includes a `Data` view for CSV export and contact import preview.
 ```bash
 npm run typecheck
 npm test
+npm run test:e2e
 npm run build
 ```
 
 ## CI
 
-A GitHub Actions workflow template is stored at `docs/ci/github-actions-ci.yml`. Move it to `.github/workflows/ci.yml` after pushing with a GitHub token that includes the `workflow` scope.
+A GitHub Actions workflow template is stored at `docs/ci/github-actions-ci.yml`. It runs typecheck, unit/API tests, Playwright e2e tests, and the production build. Move it to `.github/workflows/ci.yml` after pushing with a GitHub token that includes the `workflow` scope.
 
 ## Architecture
 

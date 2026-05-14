@@ -13,5 +13,5 @@ Cover role-aware timeline and task queue controls in the browser test harness.
 
 ## Next
 
-- Consider adding the e2e suite to CI after browser installation time is acceptable.
+- Move the CI workflow template into `.github/workflows/ci.yml` once the GitHub token has `workflow` scope.
 - Add browser coverage for successful create and correction submissions after mutation flows stabilize.

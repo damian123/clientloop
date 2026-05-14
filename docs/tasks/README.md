@@ -50,3 +50,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0046-browser-permission-harness.md](./0046-browser-permission-harness.md)
 - [0047-toolbar-create-e2e-coverage.md](./0047-toolbar-create-e2e-coverage.md)
 - [0048-timeline-task-e2e-coverage.md](./0048-timeline-task-e2e-coverage.md)
+- [0049-e2e-ci-template.md](./0049-e2e-ci-template.md)

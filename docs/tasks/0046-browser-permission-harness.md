@@ -18,4 +18,4 @@ Add a repeatable browser-level test harness for permission-aware UI states.
 
 ## Next
 
-- Consider adding the e2e suite to CI after browser installation time is acceptable.
+- Move the CI workflow template into `.github/workflows/ci.yml` once the GitHub token has `workflow` scope.
