@@ -13,4 +13,4 @@ Cover successful task completion in the browser using an isolated task created d
 
 ## Next
 
-- Add browser coverage for successful task, note, and activity correction submissions after mutation flows stabilize.
+- Split long workflow coverage into smaller specs if runtime or debugging cost grows.

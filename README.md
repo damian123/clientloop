@@ -25,7 +25,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - Object-scope negative API coverage for opportunity and custom-field updates.
 - Object-scope negative API coverage for task, note, and activity corrections.
 - Permission-negative API coverage for bulk export and import preview endpoints.
-- Playwright browser coverage for permission-aware custom field, toolbar create, timeline, and task queue UI states plus timeline create and task completion workflows.
+- Playwright browser coverage for permission-aware custom field, toolbar create, timeline, and task queue UI states plus timeline create, correction, and task completion workflows.
 - Session-scoped permission metadata that drives role-aware bulk data controls in the web UI.
 - Role-aware toolbar create controls for accounts, contacts, leads, and opportunities.
 - Role-aware record detail controls for timeline creation and correction workflows.
