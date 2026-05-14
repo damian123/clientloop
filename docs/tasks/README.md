@@ -45,3 +45,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0041-role-aware-data-controls.md](./0041-role-aware-data-controls.md)
 - [0042-role-aware-create-controls.md](./0042-role-aware-create-controls.md)
 - [0043-role-aware-timeline-controls.md](./0043-role-aware-timeline-controls.md)
+- [0044-role-aware-task-queue-controls.md](./0044-role-aware-task-queue-controls.md)

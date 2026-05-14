@@ -14,5 +14,5 @@ Apply session-derived permissions to record detail timeline actions so users do 
 
 ## Next
 
-- Apply role-aware controls to the task queue edit and complete actions.
+- Apply role-aware controls to custom field creation and record custom-field value updates.
 - Add an end-to-end permission scenario once the browser test harness exists.

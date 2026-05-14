@@ -706,6 +706,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   async function completeTask(task: Task) {
+    if (!timelinePermissions.canUpdateTask(task)) {
+      return;
+    }
+
     const optimistic: Task = {
       ...task,
       status: "done",
@@ -1709,6 +1713,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               opportunities={opportunities}
               ownerFilter={taskOwnerFilter}
               statusFilter={taskStatusFilter}
+              timelinePermissions={timelinePermissions}
               onComplete={completeTask}
               onFilterChange={changeTaskQueueFilters}
               onUpdateTask={updateRecordTask}
@@ -3665,6 +3670,7 @@ function TaskQueue({
   leads,
   ownerFilter,
   statusFilter,
+  timelinePermissions,
   onComplete,
   onFilterChange,
   onUpdateTask
@@ -3678,6 +3684,7 @@ function TaskQueue({
   leads: Lead[];
   ownerFilter: TaskOwnerFilter;
   statusFilter: TaskStatusFilter;
+  timelinePermissions: TimelinePermissions;
   onComplete: (task: Task) => void;
   onFilterChange: (updates: {
     taskStatusFilter?: TaskStatusFilter;
@@ -3700,6 +3707,11 @@ function TaskQueue({
   );
 
   function startEdit(task: Task) {
+    if (!timelinePermissions.canUpdateTask(task)) {
+      setTaskEditMessage("Task correction is not permitted");
+      return;
+    }
+
     setEditingTaskId(task.id);
     setTaskEditDraft(taskEditDraftFromTask(task));
     setTaskEditMessage("");
@@ -3712,6 +3724,11 @@ function TaskQueue({
   }
 
   async function saveEdit(task: Task) {
+    if (!timelinePermissions.canUpdateTask(task)) {
+      setTaskEditMessage("Task correction is not permitted");
+      return;
+    }
+
     const title = taskEditDraft.title.trim();
     if (!title || savingTaskEdit) {
       return;
@@ -3870,7 +3887,11 @@ function TaskQueue({
                   <div className="activity-edit-actions">
                     <button
                       className="table-action"
-                      disabled={savingTaskEdit || taskEditDraft.title.trim().length === 0}
+                      disabled={
+                        savingTaskEdit ||
+                        !timelinePermissions.canUpdateTask(task) ||
+                        taskEditDraft.title.trim().length === 0
+                      }
                       onClick={() => saveEdit(task)}
                     >
                       <Check size={16} /> Save
@@ -3893,7 +3914,7 @@ function TaskQueue({
                       className="icon-button compact"
                       title="Edit task"
                       aria-label={`Edit ${task.title}`}
-                      disabled={task.status === "done"}
+                      disabled={task.status === "done" || !timelinePermissions.canUpdateTask(task)}
                       onClick={() => startEdit(task)}
                     >
                       <Pencil size={16} />
@@ -3902,7 +3923,7 @@ function TaskQueue({
                       className="icon-button compact"
                       title="Complete task"
                       aria-label={`Complete ${task.title}`}
-                      disabled={task.status === "done"}
+                      disabled={task.status === "done" || !timelinePermissions.canUpdateTask(task)}
                       onClick={() => onComplete(task)}
                     >
                       <Check size={16} />
