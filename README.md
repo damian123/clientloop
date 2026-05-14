@@ -32,7 +32,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - Role-aware task queue edit and complete controls.
 - Role-aware custom field definition and record value controls.
 - Outbound webhook subscription APIs plus a worker that delivers signed outbox events with retry backoff.
-- CSV exports for accounts, contacts, and opportunities plus contact CSV import preview and commit workflows.
+- CSV exports and import preview/commit workflows for accounts, contacts, and opportunities.
 - `@clientloop/web` Next.js app with a usable session-backed CRM cockpit: pipeline, leads, accounts, contacts, tasks, activity timeline, search, and custom-field management.
 - Prisma PostgreSQL schema covering tenants, users, roles, permissions, CRM records, custom fields, audit logs, outbox events, and webhook subscriptions.
 - Markdown task tracking under `docs/tasks`.
@@ -120,7 +120,7 @@ curl -X POST http://localhost:4000/v1/imports/contacts/preview \
   -d '{"csv":"firstName,lastName,email\nTaylor,Nguyen,taylor@example.com"}'
 ```
 
-The web app includes a `Data` view for CSV export and contact import preview.
+The web app includes a `Data` view for CSV export plus account, contact, and opportunity import preview and commit.
 
 ## Verify
 

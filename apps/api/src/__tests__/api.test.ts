@@ -766,4 +766,69 @@ describe("CRM API", () => {
     expect(importResponse.json().contacts[0].email).toBe("riley.park@example.com");
     await app.close();
   });
+
+  it("previews and imports account CSV", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+    const csv = ["name,domain,status", "Imported Account,imported-account.example,prospect"].join("\n");
+
+    const previewResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/accounts/preview",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: { csv }
+    });
+
+    expect(previewResponse.statusCode).toBe(200);
+    expect(previewResponse.json().validRows).toBe(1);
+
+    const importResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/accounts",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: { csv }
+    });
+
+    expect(importResponse.statusCode).toBe(201);
+    expect(importResponse.json().importedCount).toBe(1);
+    expect(importResponse.json().accounts[0].name).toBe("Imported Account");
+    await app.close();
+  });
+
+  it("previews and imports opportunity CSV", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+    const csv = [
+      "name,accountId,ownerUserId,stage,amount,currency,probabilityPct",
+      `Imported Opportunity,${seedAccounts[0]!.id},${seedUserId},qualification,43000,USD,25`
+    ].join("\n");
+
+    const previewResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/opportunities/preview",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: { csv }
+    });
+
+    expect(previewResponse.statusCode).toBe(200);
+    expect(previewResponse.json().validRows).toBe(1);
+
+    const importResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/opportunities",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: { csv }
+    });
+
+    expect(importResponse.statusCode).toBe(201);
+    expect(importResponse.json().importedCount).toBe(1);
+    expect(importResponse.json().opportunities[0].name).toBe("Imported Opportunity");
+    await app.close();
+  });
 });

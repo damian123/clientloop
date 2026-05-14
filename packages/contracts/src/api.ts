@@ -241,6 +241,80 @@ export const contactImportResultSchema = z.object({
   errors: z.array(contactImportErrorSchema)
 });
 
+export const accountImportMappingSchema = z.object({
+  name: z.string().optional(),
+  domain: z.string().optional(),
+  status: z.string().optional(),
+  ownerUserId: z.string().optional()
+});
+
+export const accountImportRequestSchema = z.object({
+  csv: z.string().min(1),
+  mapping: accountImportMappingSchema.optional()
+});
+
+export const accountImportRowSchema = z.object({
+  row: z.number().int().positive(),
+  name: z.string(),
+  domain: z.string().optional(),
+  status: z.enum(["prospect", "customer", "partner", "inactive"]),
+  ownerUserId: z.string().optional()
+});
+
+export const accountImportPreviewSchema = z.object({
+  totalRows: z.number().int().nonnegative(),
+  validRows: z.number().int().nonnegative(),
+  errors: z.array(contactImportErrorSchema),
+  rows: z.array(accountImportRowSchema)
+});
+
+export const accountImportResultSchema = z.object({
+  importedCount: z.number().int().nonnegative(),
+  accounts: z.array(accountSchema),
+  errors: z.array(contactImportErrorSchema)
+});
+
+export const opportunityImportMappingSchema = z.object({
+  name: z.string().optional(),
+  stage: z.string().optional(),
+  amount: z.string().optional(),
+  currency: z.string().optional(),
+  expectedCloseDate: z.string().optional(),
+  accountId: z.string().optional(),
+  ownerUserId: z.string().optional(),
+  probabilityPct: z.string().optional()
+});
+
+export const opportunityImportRequestSchema = z.object({
+  csv: z.string().min(1),
+  mapping: opportunityImportMappingSchema.optional()
+});
+
+export const opportunityImportRowSchema = z.object({
+  row: z.number().int().positive(),
+  name: z.string(),
+  stage: opportunityStageSchema,
+  amount: z.number().nonnegative().optional(),
+  currency: z.string().length(3),
+  expectedCloseDate: z.string().optional(),
+  accountId: z.string(),
+  ownerUserId: z.string(),
+  probabilityPct: z.number().int().min(0).max(100).optional()
+});
+
+export const opportunityImportPreviewSchema = z.object({
+  totalRows: z.number().int().nonnegative(),
+  validRows: z.number().int().nonnegative(),
+  errors: z.array(contactImportErrorSchema),
+  rows: z.array(opportunityImportRowSchema)
+});
+
+export const opportunityImportResultSchema = z.object({
+  importedCount: z.number().int().nonnegative(),
+  opportunities: z.array(opportunitySchema),
+  errors: z.array(contactImportErrorSchema)
+});
+
 export const searchQuerySchema = z.object({
   q: z.string().min(1),
   limit: z.coerce.number().int().min(1).max(25).default(10)
@@ -294,8 +368,12 @@ export const apiSchemas = {
   webhookSubscription: webhookSubscriptionSchema,
   webhookSubscriptions: z.array(webhookSubscriptionSchema),
   createWebhookSubscriptionResponse: createWebhookSubscriptionResponseSchema,
+  accountImportPreview: accountImportPreviewSchema,
+  accountImportResult: accountImportResultSchema,
   contactImportPreview: contactImportPreviewSchema,
   contactImportResult: contactImportResultSchema,
+  opportunityImportPreview: opportunityImportPreviewSchema,
+  opportunityImportResult: opportunityImportResultSchema,
   customFieldValueUpdateResult: customFieldValueUpdateResultSchema
 };
 
@@ -329,6 +407,16 @@ export type ContactImportError = z.infer<typeof contactImportErrorSchema>;
 export type ContactImportRow = z.infer<typeof contactImportRowSchema>;
 export type ContactImportPreview = z.infer<typeof contactImportPreviewSchema>;
 export type ContactImportResult = z.infer<typeof contactImportResultSchema>;
+export type AccountImportMapping = z.infer<typeof accountImportMappingSchema>;
+export type AccountImportRequest = z.infer<typeof accountImportRequestSchema>;
+export type AccountImportRow = z.infer<typeof accountImportRowSchema>;
+export type AccountImportPreview = z.infer<typeof accountImportPreviewSchema>;
+export type AccountImportResult = z.infer<typeof accountImportResultSchema>;
+export type OpportunityImportMapping = z.infer<typeof opportunityImportMappingSchema>;
+export type OpportunityImportRequest = z.infer<typeof opportunityImportRequestSchema>;
+export type OpportunityImportRow = z.infer<typeof opportunityImportRowSchema>;
+export type OpportunityImportPreview = z.infer<typeof opportunityImportPreviewSchema>;
+export type OpportunityImportResult = z.infer<typeof opportunityImportResultSchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type DashboardResponse = z.infer<typeof dashboardSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;

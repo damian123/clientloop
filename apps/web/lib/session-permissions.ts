@@ -20,7 +20,9 @@ export type DataPermissions = {
   canExportAccounts: boolean;
   canExportContacts: boolean;
   canExportOpportunities: boolean;
+  canImportAccounts: boolean;
   canImportContacts: boolean;
+  canImportOpportunities: boolean;
 };
 
 export type CreatePermissions = {
@@ -52,7 +54,9 @@ export function deriveDataPermissions(
     canExportAccounts: canSessionAccess(session, "account", "export", fallback),
     canExportContacts: canSessionAccess(session, "contact", "export", fallback),
     canExportOpportunities: canSessionAccess(session, "opportunity", "export", fallback),
-    canImportContacts: canSessionAccess(session, "contact", "create", fallback)
+    canImportAccounts: canSessionAccess(session, "account", "create", fallback),
+    canImportContacts: canSessionAccess(session, "contact", "create", fallback),
+    canImportOpportunities: canSessionAccess(session, "opportunity", "create", fallback)
   };
 }
 

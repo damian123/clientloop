@@ -11,9 +11,11 @@ import {
   createTaskSchema,
   createWebhookSubscriptionSchema,
   convertLeadSchema,
+  accountImportRequestSchema,
   contactImportRequestSchema,
   exportEntitySchema,
   listQuerySchema,
+  opportunityImportRequestSchema,
   searchQuerySchema,
   recordEntityTypeSchema,
   updateActivitySchema,
@@ -25,7 +27,12 @@ import {
 import { openApiDocument } from "@clientloop/contracts";
 import { assertCan } from "@clientloop/domain";
 import { principalFromRequest } from "../auth";
-import { exportRecordsCsv, previewContactImport } from "../import-export";
+import {
+  exportRecordsCsv,
+  previewAccountImport,
+  previewContactImport,
+  previewOpportunityImport
+} from "../import-export";
 import type { CRMRepository } from "../repository";
 
 export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRepository) {
@@ -312,8 +319,55 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
     return previewContactImport(contactImportRequestSchema.parse(request.body));
   });
 
+  app.post("/v1/imports/accounts/preview", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "account", "create", { tenantId: principal.tenantId });
+    return previewAccountImport(accountImportRequestSchema.parse(request.body));
+  });
+
+  app.post("/v1/imports/opportunities/preview", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "opportunity", "create", { tenantId: principal.tenantId });
+    return previewOpportunityImport(opportunityImportRequestSchema.parse(request.body));
+  });
+
+  app.post("/v1/imports/accounts", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "account", "create", { tenantId: principal.tenantId });
+    const input = accountImportRequestSchema.parse(request.body);
+    const preview = previewAccountImport(input);
+
+    if (preview.errors.length > 0) {
+      return reply.code(400).send({
+        importedCount: 0,
+        accounts: [],
+        errors: preview.errors
+      });
+    }
+
+    const accounts = [];
+    for (const row of preview.rows) {
+      accounts.push(
+        await repository.createAccount(principal, {
+          name: row.name,
+          domain: row.domain,
+          ownerUserId: row.ownerUserId,
+          status: row.status,
+          customFields: {}
+        })
+      );
+    }
+
+    return reply.code(201).send({
+      importedCount: accounts.length,
+      accounts,
+      errors: []
+    });
+  });
+
   app.post("/v1/imports/contacts", async (request, reply) => {
     const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "contact", "create", { tenantId: principal.tenantId });
     const input = contactImportRequestSchema.parse(request.body);
     const preview = previewContactImport(input);
 
@@ -343,6 +397,44 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
     return reply.code(201).send({
       importedCount: contacts.length,
       contacts,
+      errors: []
+    });
+  });
+
+  app.post("/v1/imports/opportunities", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "opportunity", "create", { tenantId: principal.tenantId });
+    const input = opportunityImportRequestSchema.parse(request.body);
+    const preview = previewOpportunityImport(input);
+
+    if (preview.errors.length > 0) {
+      return reply.code(400).send({
+        importedCount: 0,
+        opportunities: [],
+        errors: preview.errors
+      });
+    }
+
+    const opportunities = [];
+    for (const row of preview.rows) {
+      opportunities.push(
+        await repository.createOpportunity(principal, {
+          name: row.name,
+          stage: row.stage,
+          amount: row.amount,
+          currency: row.currency,
+          expectedCloseDate: row.expectedCloseDate,
+          accountId: row.accountId,
+          ownerUserId: row.ownerUserId,
+          probabilityPct: row.probabilityPct,
+          customFields: {}
+        })
+      );
+    }
+
+    return reply.code(201).send({
+      importedCount: opportunities.length,
+      opportunities,
       errors: []
     });
   });

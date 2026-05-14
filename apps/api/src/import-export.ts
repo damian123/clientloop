@@ -1,11 +1,19 @@
 import { z } from "zod";
 import {
+  accountImportRequestSchema,
   contactImportRequestSchema,
   exportEntitySchema,
+  opportunityImportRequestSchema,
+  type AccountImportPreview,
+  type AccountImportRequest,
+  type AccountImportRow,
   type ContactImportPreview,
   type ContactImportRequest,
   type ContactImportRow,
-  type ExportEntity
+  type ExportEntity,
+  type OpportunityImportPreview,
+  type OpportunityImportRequest,
+  type OpportunityImportRow
 } from "@clientloop/contracts";
 import {
   assertCan,
@@ -18,8 +26,34 @@ import { parseCsv, toCsv, type CsvRow } from "./csv";
 import type { CRMRepository } from "./repository";
 
 const emailSchema = z.string().email();
+const accountStatusSchema = z.enum(["prospect", "customer", "partner", "inactive"]);
+const opportunityStageSchema = z.enum([
+  "qualification",
+  "discovery",
+  "proposal",
+  "negotiation",
+  "closed_won",
+  "closed_lost"
+]);
 
+type AccountImportField = "name" | "domain" | "status" | "ownerUserId";
 type ContactImportField = "firstName" | "lastName" | "email" | "phone" | "accountId" | "ownerUserId";
+type OpportunityImportField =
+  | "name"
+  | "stage"
+  | "amount"
+  | "currency"
+  | "expectedCloseDate"
+  | "accountId"
+  | "ownerUserId"
+  | "probabilityPct";
+
+const accountAliases: Record<AccountImportField, string[]> = {
+  name: ["name", "Name", "Account Name", "accountName", "account_name"],
+  domain: ["domain", "Domain"],
+  status: ["status", "Status"],
+  ownerUserId: ["ownerUserId", "owner_user_id", "Owner User ID"]
+};
 
 const contactAliases: Record<ContactImportField, string[]> = {
   firstName: ["firstName", "first_name", "First Name", "First name"],
@@ -28,6 +62,17 @@ const contactAliases: Record<ContactImportField, string[]> = {
   phone: ["phone", "Phone"],
   accountId: ["accountId", "account_id", "Account ID"],
   ownerUserId: ["ownerUserId", "owner_user_id", "Owner User ID"]
+};
+
+const opportunityAliases: Record<OpportunityImportField, string[]> = {
+  name: ["name", "Name", "Opportunity Name", "opportunityName", "opportunity_name"],
+  stage: ["stage", "Stage"],
+  amount: ["amount", "Amount"],
+  currency: ["currency", "Currency"],
+  expectedCloseDate: ["expectedCloseDate", "expected_close_date", "Expected Close Date"],
+  accountId: ["accountId", "account_id", "Account ID"],
+  ownerUserId: ["ownerUserId", "owner_user_id", "Owner User ID"],
+  probabilityPct: ["probabilityPct", "probability_pct", "Probability", "Probability %"]
 };
 
 export async function exportRecordsCsv(input: {
@@ -52,6 +97,33 @@ export async function exportRecordsCsv(input: {
   }
 }
 
+export function previewAccountImport(input: AccountImportRequest): AccountImportPreview {
+  const parsed = accountImportRequestSchema.parse(input);
+  const rawRows = parseCsv(parsed.csv);
+  const errors: AccountImportPreview["errors"] = [];
+  const rows: AccountImportRow[] = [];
+
+  rawRows.forEach((rawRow, index) => {
+    const rowNumber = index + 2;
+    const row = toAccountImportRow(rawRow, rowNumber, parsed.mapping);
+    const rowErrors = validateAccountRow(row);
+
+    if (rowErrors.length > 0) {
+      errors.push(...rowErrors);
+      return;
+    }
+
+    rows.push(row as AccountImportRow);
+  });
+
+  return {
+    totalRows: rawRows.length,
+    validRows: rows.length,
+    errors,
+    rows
+  };
+}
+
 export function previewContactImport(input: ContactImportRequest): ContactImportPreview {
   const parsed = contactImportRequestSchema.parse(input);
   const rawRows = parseCsv(parsed.csv);
@@ -69,6 +141,33 @@ export function previewContactImport(input: ContactImportRequest): ContactImport
     }
 
     rows.push(row);
+  });
+
+  return {
+    totalRows: rawRows.length,
+    validRows: rows.length,
+    errors,
+    rows
+  };
+}
+
+export function previewOpportunityImport(input: OpportunityImportRequest): OpportunityImportPreview {
+  const parsed = opportunityImportRequestSchema.parse(input);
+  const rawRows = parseCsv(parsed.csv);
+  const errors: OpportunityImportPreview["errors"] = [];
+  const rows: OpportunityImportRow[] = [];
+
+  rawRows.forEach((rawRow, index) => {
+    const rowNumber = index + 2;
+    const row = toOpportunityImportRow(rawRow, rowNumber, parsed.mapping);
+    const rowErrors = validateOpportunityRow(row);
+
+    if (rowErrors.length > 0) {
+      errors.push(...rowErrors);
+      return;
+    }
+
+    rows.push(row as OpportunityImportRow);
   });
 
   return {
@@ -155,10 +254,50 @@ function toContactImportRow(
   };
 }
 
+function toAccountImportRow(
+  rawRow: CsvRow,
+  rowNumber: number,
+  mapping: AccountImportRequest["mapping"] | undefined
+): AccountImportRow {
+  const status = readMappedValue(rawRow, "status", mapping, accountAliases) || "prospect";
+
+  return {
+    row: rowNumber,
+    name: readMappedValue(rawRow, "name", mapping, accountAliases),
+    domain: readMappedValue(rawRow, "domain", mapping, accountAliases) || undefined,
+    status: accountStatusSchema.safeParse(status).success ? accountStatusSchema.parse(status) : status,
+    ownerUserId: readMappedValue(rawRow, "ownerUserId", mapping, accountAliases) || undefined
+  } as AccountImportRow;
+}
+
+function toOpportunityImportRow(
+  rawRow: CsvRow,
+  rowNumber: number,
+  mapping: OpportunityImportRequest["mapping"] | undefined
+): OpportunityImportRow {
+  const amount = readOptionalNumber(rawRow, "amount", mapping, opportunityAliases);
+  const probabilityPct = readOptionalNumber(rawRow, "probabilityPct", mapping, opportunityAliases);
+  const stage = readMappedValue(rawRow, "stage", mapping, opportunityAliases) || "qualification";
+  const currency = readMappedValue(rawRow, "currency", mapping, opportunityAliases) || "USD";
+
+  return {
+    row: rowNumber,
+    name: readMappedValue(rawRow, "name", mapping, opportunityAliases),
+    stage: opportunityStageSchema.safeParse(stage).success ? opportunityStageSchema.parse(stage) : stage,
+    amount,
+    currency,
+    expectedCloseDate: readMappedValue(rawRow, "expectedCloseDate", mapping, opportunityAliases) || undefined,
+    accountId: readMappedValue(rawRow, "accountId", mapping, opportunityAliases),
+    ownerUserId: readMappedValue(rawRow, "ownerUserId", mapping, opportunityAliases),
+    probabilityPct
+  } as OpportunityImportRow;
+}
+
 function readMappedValue(
   row: CsvRow,
-  field: ContactImportField,
-  mapping: ContactImportRequest["mapping"] | undefined
+  field: string,
+  mapping: Record<string, string | undefined> | undefined,
+  aliases: Record<string, string[]> = contactAliases as Record<string, string[]>
 ): string {
   const explicitHeader = mapping?.[field];
 
@@ -166,7 +305,7 @@ function readMappedValue(
     return row[explicitHeader]?.trim() ?? "";
   }
 
-  for (const alias of contactAliases[field]) {
+  for (const alias of aliases[field] ?? []) {
     const value = row[alias]?.trim();
     if (value) {
       return value;
@@ -174,6 +313,33 @@ function readMappedValue(
   }
 
   return "";
+}
+
+function readOptionalNumber(
+  row: CsvRow,
+  field: string,
+  mapping: Record<string, string | undefined> | undefined,
+  aliases: Record<string, string[]>
+): number | undefined {
+  const value = readMappedValue(row, field, mapping, aliases);
+  if (!value) {
+    return undefined;
+  }
+  return Number(value);
+}
+
+function validateAccountRow(row: AccountImportRow): AccountImportPreview["errors"] {
+  const errors: AccountImportPreview["errors"] = [];
+
+  if (!row.name) {
+    errors.push({ row: row.row, field: "name", message: "Name is required" });
+  }
+
+  if (!accountStatusSchema.safeParse(row.status).success) {
+    errors.push({ row: row.row, field: "status", message: "Status is invalid" });
+  }
+
+  return errors;
 }
 
 function validateContactRow(row: ContactImportRow): ContactImportPreview["errors"] {
@@ -189,6 +355,43 @@ function validateContactRow(row: ContactImportRow): ContactImportPreview["errors
 
   if (row.email && !emailSchema.safeParse(row.email).success) {
     errors.push({ row: row.row, field: "email", message: "Email is invalid" });
+  }
+
+  return errors;
+}
+
+function validateOpportunityRow(row: OpportunityImportRow): OpportunityImportPreview["errors"] {
+  const errors: OpportunityImportPreview["errors"] = [];
+
+  if (!row.name) {
+    errors.push({ row: row.row, field: "name", message: "Name is required" });
+  }
+
+  if (!row.accountId) {
+    errors.push({ row: row.row, field: "accountId", message: "Account ID is required" });
+  }
+
+  if (!row.ownerUserId) {
+    errors.push({ row: row.row, field: "ownerUserId", message: "Owner User ID is required" });
+  }
+
+  if (!opportunityStageSchema.safeParse(row.stage).success) {
+    errors.push({ row: row.row, field: "stage", message: "Stage is invalid" });
+  }
+
+  if (!Number.isFinite(row.amount ?? 0) || (row.amount ?? 0) < 0) {
+    errors.push({ row: row.row, field: "amount", message: "Amount must be a nonnegative number" });
+  }
+
+  if (!/^[A-Z]{3}$/.test(row.currency)) {
+    errors.push({ row: row.row, field: "currency", message: "Currency must be a 3-letter code" });
+  }
+
+  if (
+    row.probabilityPct !== undefined &&
+    (!Number.isInteger(row.probabilityPct) || row.probabilityPct < 0 || row.probabilityPct > 100)
+  ) {
+    errors.push({ row: row.row, field: "probabilityPct", message: "Probability must be between 0 and 100" });
   }
 
   return errors;

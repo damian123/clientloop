@@ -17,7 +17,9 @@ describe("session permission helpers", () => {
     expect(createPermissions.canCreateAccounts).toBe(true);
     expect(createPermissions.canCreateOpportunities).toBe(true);
     expect(dataPermissions.canExportContacts).toBe(true);
+    expect(dataPermissions.canImportAccounts).toBe(true);
     expect(dataPermissions.canImportContacts).toBe(true);
+    expect(dataPermissions.canImportOpportunities).toBe(true);
   });
 
   it("maps tenant-scoped permissions to create and data controls", () => {
@@ -36,7 +38,9 @@ describe("session permission helpers", () => {
     expect(createPermissions.canCreateOpportunities).toBe(false);
     expect(dataPermissions.canExportContacts).toBe(true);
     expect(dataPermissions.canExportAccounts).toBe(false);
+    expect(dataPermissions.canImportAccounts).toBe(true);
     expect(dataPermissions.canImportContacts).toBe(true);
+    expect(dataPermissions.canImportOpportunities).toBe(false);
   });
 
   it("disables contextual create in the data view", () => {

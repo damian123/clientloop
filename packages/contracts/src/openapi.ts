@@ -216,12 +216,36 @@ export const openApiDocument = {
         }
       }
     },
+    "/v1/imports/accounts/preview": {
+      post: { summary: "Preview account CSV import" }
+    },
+    "/v1/imports/accounts": {
+      post: {
+        summary: "Import accounts from CSV",
+        responses: {
+          "201": { description: "Imported" },
+          "400": { description: "CSV validation failed" }
+        }
+      }
+    },
     "/v1/imports/contacts/preview": {
       post: { summary: "Preview contact CSV import" }
     },
     "/v1/imports/contacts": {
       post: {
         summary: "Import contacts from CSV",
+        responses: {
+          "201": { description: "Imported" },
+          "400": { description: "CSV validation failed" }
+        }
+      }
+    },
+    "/v1/imports/opportunities/preview": {
+      post: { summary: "Preview opportunity CSV import" }
+    },
+    "/v1/imports/opportunities": {
+      post: {
+        summary: "Import opportunities from CSV",
         responses: {
           "201": { description: "Imported" },
           "400": { description: "CSV validation failed" }

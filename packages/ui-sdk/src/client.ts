@@ -1,5 +1,6 @@
 import {
   apiSchemas,
+  accountImportRequestSchema,
   createAccountSchema,
   createActivitySchema,
   createContactSchema,
@@ -12,12 +13,16 @@ import {
   convertLeadSchema,
   devLoginSchema,
   exportEntitySchema,
+  opportunityImportRequestSchema,
   updateActivitySchema,
   updateCustomFieldValuesSchema,
   updateNoteSchema,
   updateTaskSchema,
   type AppendNoteInput,
   type CompleteTaskInput,
+  type AccountImportPreview,
+  type AccountImportRequest,
+  type AccountImportResult,
   type ContactImportPreview,
   type ContactImportRequest,
   type ContactImportResult,
@@ -36,6 +41,9 @@ import {
   type DevLoginInput,
   type ExportEntity,
   type LeadConversionResult,
+  type OpportunityImportPreview,
+  type OpportunityImportRequest,
+  type OpportunityImportResult,
   type SearchResult,
   type SessionResponse,
   type UpdateActivityInput,
@@ -346,11 +354,43 @@ export class CRMClient {
     );
   }
 
+  async previewAccountImport(input: AccountImportRequest): Promise<AccountImportPreview> {
+    return this.request(
+      "/v1/imports/accounts/preview",
+      this.jsonRequest("POST", accountImportRequestSchema.parse(input)),
+      apiSchemas.accountImportPreview
+    );
+  }
+
   async importContacts(input: ContactImportRequest): Promise<ContactImportResult> {
     return this.request(
       "/v1/imports/contacts",
       this.jsonRequest("POST", contactImportRequestSchema.parse(input)),
       apiSchemas.contactImportResult
+    );
+  }
+
+  async importAccounts(input: AccountImportRequest): Promise<AccountImportResult> {
+    return this.request(
+      "/v1/imports/accounts",
+      this.jsonRequest("POST", accountImportRequestSchema.parse(input)),
+      apiSchemas.accountImportResult
+    );
+  }
+
+  async previewOpportunityImport(input: OpportunityImportRequest): Promise<OpportunityImportPreview> {
+    return this.request(
+      "/v1/imports/opportunities/preview",
+      this.jsonRequest("POST", opportunityImportRequestSchema.parse(input)),
+      apiSchemas.opportunityImportPreview
+    );
+  }
+
+  async importOpportunities(input: OpportunityImportRequest): Promise<OpportunityImportResult> {
+    return this.request(
+      "/v1/imports/opportunities",
+      this.jsonRequest("POST", opportunityImportRequestSchema.parse(input)),
+      apiSchemas.opportunityImportResult
     );
   }
 

@@ -25,6 +25,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppendNoteInput,
+  AccountImportPreview,
   ContactImportPreview,
   CreateActivityInput,
   CreateTaskInput,
@@ -32,6 +33,7 @@ import type {
   DashboardResponse,
   ExportEntity,
   SessionResponse,
+  OpportunityImportPreview,
   UpdateActivityInput,
   UpdateNoteInput,
   UpdateTaskInput
@@ -144,6 +146,10 @@ const stageLabels: Record<OpportunityStage, string> = {
 
 const contactCsvPlaceholder = `firstName,lastName,email,phone
 Jordan,Rivera,jordan@example.com,+1 415 555 0199`;
+const accountCsvPlaceholder = `name,domain,status
+Acme Systems,acme.example,prospect`;
+const opportunityCsvPlaceholder = `name,accountId,ownerUserId,stage,amount,currency,probabilityPct
+Expansion deal,00000000-0000-4000-8000-000000001001,00000000-0000-4000-8000-000000000101,qualification,25000,USD,20`;
 
 export function CRMWorkspace({ initialDashboard }: { initialDashboard: DashboardResponse }) {
   const router = useRouter();
@@ -222,8 +228,13 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   );
   const [creatingOpportunity, setCreatingOpportunity] = useState(false);
   const [opportunityMessage, setOpportunityMessage] = useState("");
+  const [accountCsv, setAccountCsv] = useState("");
   const [contactCsv, setContactCsv] = useState("");
+  const [opportunityCsv, setOpportunityCsv] = useState("");
+  const [accountImportPreview, setAccountImportPreview] = useState<AccountImportPreview | null>(null);
   const [importPreview, setImportPreview] = useState<ContactImportPreview | null>(null);
+  const [opportunityImportPreview, setOpportunityImportPreview] =
+    useState<OpportunityImportPreview | null>(null);
   const [dataMessage, setDataMessage] = useState("");
   const [dataBusy, setDataBusy] = useState(false);
   const [session, setSession] = useState<SessionResponse | null>(null);
@@ -1275,6 +1286,34 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }
 
+  async function previewAccountCsv() {
+    if (!apiBaseUrl) {
+      setDataMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportAccounts) {
+      setDataMessage("Account import preview is not permitted");
+      return;
+    }
+
+    setDataBusy(true);
+    setDataMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const preview = await client.previewAccountImport({ csv: accountCsv });
+      setAccountImportPreview(preview);
+      setDataMessage(`${preview.validRows} valid account rows from ${preview.totalRows}`);
+    } catch (error) {
+      setDataMessage(errorSummary(error));
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
   async function importContactCsv() {
     if (!apiBaseUrl) {
       setDataMessage("API is not configured");
@@ -1298,6 +1337,94 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       setImportPreview(null);
       setContactCsv("");
       setDataMessage(`Imported ${result.importedCount} contacts`);
+    } catch (error) {
+      setDataMessage(errorSummary(error));
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  async function importAccountCsv() {
+    if (!apiBaseUrl) {
+      setDataMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportAccounts) {
+      setDataMessage("Account import is not permitted");
+      return;
+    }
+
+    setDataBusy(true);
+    setDataMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const result = await client.importAccounts({ csv: accountCsv });
+      setAccounts((current) => [...result.accounts, ...current]);
+      setAccountImportPreview(null);
+      setAccountCsv("");
+      setDataMessage(`Imported ${result.importedCount} accounts`);
+    } catch (error) {
+      setDataMessage(errorSummary(error));
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  async function previewOpportunityCsv() {
+    if (!apiBaseUrl) {
+      setDataMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportOpportunities) {
+      setDataMessage("Opportunity import preview is not permitted");
+      return;
+    }
+
+    setDataBusy(true);
+    setDataMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const preview = await client.previewOpportunityImport({ csv: opportunityCsv });
+      setOpportunityImportPreview(preview);
+      setDataMessage(`${preview.validRows} valid opportunity rows from ${preview.totalRows}`);
+    } catch (error) {
+      setDataMessage(errorSummary(error));
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  async function importOpportunityCsv() {
+    if (!apiBaseUrl) {
+      setDataMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportOpportunities) {
+      setDataMessage("Opportunity import is not permitted");
+      return;
+    }
+
+    setDataBusy(true);
+    setDataMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const result = await client.importOpportunities({ csv: opportunityCsv });
+      setOpportunities((current) => [...result.opportunities, ...current]);
+      setOpportunityImportPreview(null);
+      setOpportunityCsv("");
+      setDataMessage(`Imported ${result.importedCount} opportunities`);
     } catch (error) {
       setDataMessage(errorSummary(error));
     } finally {
@@ -1673,20 +1800,30 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
             {viewMode === "data" ? (
               <DataView
+                accountCsv={accountCsv}
                 contactCsv={contactCsv}
+                opportunityCsv={opportunityCsv}
                 customFieldDefinitions={customFieldDefinitions}
                 customFieldDraft={customFieldDraft}
                 dataBusy={dataBusy}
                 dataMessage={dataMessage}
                 dataPermissions={dataPermissions}
                 customFieldPermissions={customFieldPermissions}
+                accountImportPreview={accountImportPreview}
                 importPreview={importPreview}
+                opportunityImportPreview={opportunityImportPreview}
+                onAccountCsvChange={setAccountCsv}
                 onContactCsvChange={setContactCsv}
+                onOpportunityCsvChange={setOpportunityCsv}
                 onCreateCustomField={createCustomFieldDefinition}
                 onCustomFieldDraftChange={setCustomFieldDraft}
                 onExport={exportRecords}
+                onImportAccounts={importAccountCsv}
                 onImport={importContactCsv}
+                onImportOpportunities={importOpportunityCsv}
+                onPreviewAccounts={previewAccountCsv}
                 onPreview={previewContactCsv}
+                onPreviewOpportunities={previewOpportunityCsv}
               />
             ) : null}
           </section>
@@ -2445,36 +2582,62 @@ function ContactsView({
   );
 }
 
+type ImportPreviewSummary = {
+  totalRows: number;
+  validRows: number;
+  errors: { row: number; field: string; message: string }[];
+};
+
 function DataView({
+  accountCsv,
   contactCsv,
+  opportunityCsv,
   customFieldDefinitions,
   customFieldDraft,
   dataBusy,
   dataMessage,
   dataPermissions,
   customFieldPermissions,
+  accountImportPreview,
   importPreview,
+  opportunityImportPreview,
+  onAccountCsvChange,
   onContactCsvChange,
+  onOpportunityCsvChange,
   onCreateCustomField,
   onCustomFieldDraftChange,
   onExport,
+  onImportAccounts,
   onImport,
-  onPreview
+  onImportOpportunities,
+  onPreviewAccounts,
+  onPreview,
+  onPreviewOpportunities
 }: {
+  accountCsv: string;
   contactCsv: string;
+  opportunityCsv: string;
   customFieldDefinitions: CustomFieldDefinition[];
   customFieldDraft: CustomFieldDraft;
   dataBusy: boolean;
   dataMessage: string;
   dataPermissions: DataPermissions;
   customFieldPermissions: CustomFieldPermissions;
+  accountImportPreview: AccountImportPreview | null;
   importPreview: ContactImportPreview | null;
+  opportunityImportPreview: OpportunityImportPreview | null;
+  onAccountCsvChange: (value: string) => void;
   onContactCsvChange: (value: string) => void;
+  onOpportunityCsvChange: (value: string) => void;
   onCreateCustomField: () => void;
   onCustomFieldDraftChange: (value: CustomFieldDraft) => void;
   onExport: (entity: ExportEntity) => void;
+  onImportAccounts: () => void;
   onImport: () => void;
+  onImportOpportunities: () => void;
+  onPreviewAccounts: () => void;
   onPreview: () => void;
+  onPreviewOpportunities: () => void;
 }) {
   return (
     <>
@@ -2513,64 +2676,44 @@ function DataView({
           </div>
         </section>
 
-        <section className="data-section" aria-label="Contact import">
-          <div>
-            <p className="eyebrow">Import</p>
-            <h4>Contact CSV</h4>
-          </div>
-          <label className="csv-editor">
-            <span className="sr-only">Contact CSV</span>
-            <textarea
-              value={contactCsv}
-              onChange={(event) => onContactCsvChange(event.target.value)}
-              placeholder={contactCsvPlaceholder}
-              spellCheck={false}
-            />
-          </label>
-          <div className="data-actions">
-            <button
-              disabled={
-                dataBusy || !dataPermissions.canImportContacts || contactCsv.trim().length === 0
-              }
-              onClick={onPreview}
-            >
-              <Search size={16} /> Preview
-            </button>
-            <button
-              className="primary-action"
-              disabled={
-                dataBusy ||
-                !dataPermissions.canImportContacts ||
-                !importPreview ||
-                importPreview.errors.length > 0
-              }
-              onClick={onImport}
-            >
-              <Upload size={16} /> Import
-            </button>
-          </div>
+        <ImportSection
+          title="Account CSV"
+          label="Account CSV"
+          value={accountCsv}
+          placeholder={accountCsvPlaceholder}
+          busy={dataBusy}
+          allowed={dataPermissions.canImportAccounts}
+          preview={accountImportPreview}
+          onChange={onAccountCsvChange}
+          onPreview={onPreviewAccounts}
+          onImport={onImportAccounts}
+        />
 
-          {importPreview ? (
-            <div className="import-summary" aria-label="Import preview">
-              <strong>{importPreview.validRows}</strong>
-              <span>valid</span>
-              <strong>{importPreview.errors.length}</strong>
-              <span>errors</span>
-              <strong>{importPreview.totalRows}</strong>
-              <span>rows</span>
-            </div>
-          ) : null}
+        <ImportSection
+          title="Contact CSV"
+          label="Contact CSV"
+          value={contactCsv}
+          placeholder={contactCsvPlaceholder}
+          busy={dataBusy}
+          allowed={dataPermissions.canImportContacts}
+          preview={importPreview}
+          onChange={onContactCsvChange}
+          onPreview={onPreview}
+          onImport={onImport}
+        />
 
-          {importPreview?.errors.length ? (
-            <ul className="import-errors">
-              {importPreview.errors.slice(0, 4).map((error) => (
-                <li key={`${error.row}-${error.field}-${error.message}`}>
-                  Row {error.row}: {error.field} - {error.message}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
+        <ImportSection
+          title="Opportunity CSV"
+          label="Opportunity CSV"
+          value={opportunityCsv}
+          placeholder={opportunityCsvPlaceholder}
+          busy={dataBusy}
+          allowed={dataPermissions.canImportOpportunities}
+          preview={opportunityImportPreview}
+          onChange={onOpportunityCsvChange}
+          onPreview={onPreviewOpportunities}
+          onImport={onImportOpportunities}
+        />
 
         <section className="data-section" aria-label="Custom field definitions">
           <div>
@@ -2710,6 +2853,81 @@ function DataView({
         {dataMessage ? <p className="data-message">{dataMessage}</p> : null}
       </div>
     </>
+  );
+}
+
+function ImportSection({
+  title,
+  label,
+  value,
+  placeholder,
+  busy,
+  allowed,
+  preview,
+  onChange,
+  onPreview,
+  onImport
+}: {
+  title: string;
+  label: string;
+  value: string;
+  placeholder: string;
+  busy: boolean;
+  allowed: boolean;
+  preview: ImportPreviewSummary | null;
+  onChange: (value: string) => void;
+  onPreview: () => void;
+  onImport: () => void;
+}) {
+  return (
+    <section className="data-section" aria-label={`${title} import`}>
+      <div>
+        <p className="eyebrow">Import</p>
+        <h4>{title}</h4>
+      </div>
+      <label className="csv-editor">
+        <span className="sr-only">{label}</span>
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          spellCheck={false}
+        />
+      </label>
+      <div className="data-actions">
+        <button disabled={busy || !allowed || value.trim().length === 0} onClick={onPreview}>
+          <Search size={16} /> Preview
+        </button>
+        <button
+          className="primary-action"
+          disabled={busy || !allowed || !preview || preview.errors.length > 0}
+          onClick={onImport}
+        >
+          <Upload size={16} /> Import
+        </button>
+      </div>
+
+      {preview ? (
+        <div className="import-summary" aria-label={`${title} import preview`}>
+          <strong>{preview.validRows}</strong>
+          <span>valid</span>
+          <strong>{preview.errors.length}</strong>
+          <span>errors</span>
+          <strong>{preview.totalRows}</strong>
+          <span>rows</span>
+        </div>
+      ) : null}
+
+      {preview?.errors.length ? (
+        <ul className="import-errors">
+          {preview.errors.slice(0, 4).map((error) => (
+            <li key={`${error.row}-${error.field}-${error.message}`}>
+              Row {error.row}: {error.field} - {error.message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
