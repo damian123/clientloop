@@ -4,6 +4,7 @@ import { seedTenantId, seedUserId } from "@clientloop/domain";
 import {
   canCreateForView,
   deriveCreatePermissions,
+  deriveCustomFieldPermissions,
   deriveDataPermissions,
   deriveTimelinePermissions
 } from "./session-permissions";
@@ -74,6 +75,19 @@ describe("session permission helpers", () => {
         createdBy: "other-user"
       } as Parameters<typeof permissions.canUpdateActivity>[0])
     ).toBe(false);
+  });
+
+  it("maps custom field permissions to definition and record value controls", () => {
+    const session = sessionWithPermissions([
+      { id: "custom-field-create", resource: "custom_field", action: "create", condition: "tenant" },
+      { id: "account-update", resource: "account", action: "update", condition: "own" }
+    ]);
+    const permissions = deriveCustomFieldPermissions(session, false);
+
+    expect(permissions.canCreateDefinitions).toBe(true);
+    expect(permissions.canUpdateRecordValues("account", { ownerUserId: seedUserId })).toBe(true);
+    expect(permissions.canUpdateRecordValues("account", { ownerUserId: "other-user" })).toBe(false);
+    expect(permissions.canUpdateRecordValues("contact", { ownerUserId: seedUserId })).toBe(false);
   });
 });
 

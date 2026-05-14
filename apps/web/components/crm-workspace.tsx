@@ -73,9 +73,11 @@ import {
   canCreateForView,
   canExportEntity,
   deriveCreatePermissions,
+  deriveCustomFieldPermissions,
   deriveDataPermissions,
   deriveTimelinePermissions,
   type CreatePermissions,
+  type CustomFieldPermissions,
   type DataPermissions,
   type TimelinePermissions
 } from "../lib/session-permissions";
@@ -482,6 +484,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   );
   const timelinePermissions = useMemo<TimelinePermissions>(
     () => deriveTimelinePermissions(session, !apiBaseUrl),
+    [apiBaseUrl, session]
+  );
+  const customFieldPermissions = useMemo<CustomFieldPermissions>(
+    () => deriveCustomFieldPermissions(session, !apiBaseUrl),
     [apiBaseUrl, session]
   );
   const canCreateInCurrentView = canCreateForView(createPermissions, viewMode);
@@ -1304,6 +1310,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       return;
     }
 
+    if (!customFieldPermissions.canCreateDefinitions) {
+      setDataMessage("Custom field creation is not permitted");
+      return;
+    }
+
     const input = customFieldDefinitionInput(customFieldDraft);
     if (!input) {
       setDataMessage("Custom field label is required");
@@ -1359,6 +1370,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   ) {
     if (!apiBaseUrl) {
       setCustomFieldMessage("API is not configured");
+      return;
+    }
+
+    if (!customFieldPermissions.canUpdateRecordValues(entityType, record)) {
+      setCustomFieldMessage("Custom field updates are not permitted");
       return;
     }
 
@@ -1662,6 +1678,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 dataBusy={dataBusy}
                 dataMessage={dataMessage}
                 dataPermissions={dataPermissions}
+                customFieldPermissions={customFieldPermissions}
                 importPreview={importPreview}
                 onContactCsvChange={setContactCsv}
                 onCreateCustomField={createCustomFieldDefinition}
@@ -1691,6 +1708,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 savingCustomFieldRecordId={savingCustomFieldRecordId}
                 tasks={tasks}
                 timelinePermissions={timelinePermissions}
+                customFieldPermissions={customFieldPermissions}
                 currentUserId={session?.user.id ?? seedManagerId}
                 onClose={closeRecordDetail}
                 onAppendNote={appendRecordNote}
@@ -2433,6 +2451,7 @@ function DataView({
   dataBusy,
   dataMessage,
   dataPermissions,
+  customFieldPermissions,
   importPreview,
   onContactCsvChange,
   onCreateCustomField,
@@ -2447,6 +2466,7 @@ function DataView({
   dataBusy: boolean;
   dataMessage: string;
   dataPermissions: DataPermissions;
+  customFieldPermissions: CustomFieldPermissions;
   importPreview: ContactImportPreview | null;
   onContactCsvChange: (value: string) => void;
   onCreateCustomField: () => void;
@@ -2663,7 +2683,11 @@ function DataView({
             </label>
             <button
               className="primary-action"
-              disabled={dataBusy || customFieldDraft.label.trim().length === 0}
+              disabled={
+                dataBusy ||
+                !customFieldPermissions.canCreateDefinitions ||
+                customFieldDraft.label.trim().length === 0
+              }
               onClick={onCreateCustomField}
             >
               <Plus size={16} /> Add field
@@ -2702,6 +2726,7 @@ function RecordDetailPanel({
   savingCustomFieldRecordId,
   tasks,
   timelinePermissions,
+  customFieldPermissions,
   currentUserId,
   onClose,
   onAppendNote,
@@ -2726,6 +2751,7 @@ function RecordDetailPanel({
   savingCustomFieldRecordId: string | null;
   tasks: Task[];
   timelinePermissions: TimelinePermissions;
+  customFieldPermissions: CustomFieldPermissions;
   currentUserId: string;
   onClose: () => void;
   onAppendNote: (input: AppendNoteInput) => Promise<Note>;
@@ -3573,6 +3599,7 @@ function RecordDetailPanel({
           entityType={entityType}
           record={record}
           savingRecordId={savingCustomFieldRecordId}
+          canUpdate={customFieldPermissions.canUpdateRecordValues(entityType, record)}
           onDraftChange={onCustomFieldDraftChange}
           onSave={onSaveCustomFields}
         />
@@ -4137,6 +4164,7 @@ function CustomFieldValueEditor({
   entityType,
   record,
   savingRecordId,
+  canUpdate,
   onDraftChange,
   onSave
 }: {
@@ -4145,6 +4173,7 @@ function CustomFieldValueEditor({
   entityType: RecordEntityType;
   record: CustomFieldRecord;
   savingRecordId: string | null;
+  canUpdate: boolean;
   onDraftChange: (
     entityType: RecordEntityType,
     recordId: string,
@@ -4171,6 +4200,7 @@ function CustomFieldValueEditor({
           <span>{definition.label}</span>
           <CustomFieldInput
             definition={definition}
+            disabled={!canUpdate}
             value={draftCustomFieldValue(drafts, record, definition, entityType)}
             onChange={(value) => onDraftChange(entityType, record.id, definition.key, value)}
           />
@@ -4178,7 +4208,7 @@ function CustomFieldValueEditor({
       ))}
       <button
         className="table-action"
-        disabled={!hasDraft || savingRecordId === draftKey}
+        disabled={!canUpdate || !hasDraft || savingRecordId === draftKey}
         onClick={() => onSave(entityType, record, definitions)}
       >
         <Check size={16} /> Save fields
@@ -4189,10 +4219,12 @@ function CustomFieldValueEditor({
 
 function CustomFieldInput({
   definition,
+  disabled,
   value,
   onChange
 }: {
   definition: CustomFieldDefinition;
+  disabled?: boolean;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -4200,7 +4232,12 @@ function CustomFieldInput({
 
   if (definition.fieldType === "boolean") {
     return (
-      <select className="field-input" value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        className="field-input"
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
         <option value="">Unset</option>
         <option value="true">True</option>
         <option value="false">False</option>
@@ -4210,7 +4247,12 @@ function CustomFieldInput({
 
   if (definition.fieldType === "single_select" && options.length > 0) {
     return (
-      <select className="field-input" value={value} onChange={(event) => onChange(event.target.value)}>
+      <select
+        className="field-input"
+        disabled={disabled}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
         <option value="">Unset</option>
         {options.map((option) => (
           <option key={option} value={option}>{option}</option>
@@ -4222,6 +4264,7 @@ function CustomFieldInput({
   return (
     <input
       className="field-input"
+      disabled={disabled}
       type={definition.fieldType === "number" ? "number" : definition.fieldType === "date" ? "date" : "text"}
       value={value}
       onChange={(event) => onChange(event.target.value)}

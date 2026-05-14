@@ -13,5 +13,4 @@ Apply session-derived task update permissions to the task queue edit and complet
 
 ## Next
 
-- Apply role-aware controls to custom field creation and record custom-field value updates.
 - Add end-to-end permission scenarios once the browser test harness exists.

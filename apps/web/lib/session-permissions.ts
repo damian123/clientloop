@@ -4,15 +4,16 @@ import type {
   Note,
   PermissionAction,
   PermissionResource,
+  RecordEntityType,
   Task
 } from "@clientloop/domain";
 
 export type CreateViewMode = "pipeline" | "leads" | "accounts" | "contacts" | "data";
 
-type PermissionTarget = {
-  ownerUserId?: string | null;
-  assignedUserId?: string | null;
-  createdBy?: string | null;
+export type PermissionTarget = {
+  ownerUserId?: string | null | undefined;
+  assignedUserId?: string | null | undefined;
+  createdBy?: string | null | undefined;
 };
 
 export type DataPermissions = {
@@ -36,6 +37,11 @@ export type TimelinePermissions = {
   canUpdateActivity: (activity: Activity) => boolean;
   canUpdateNote: (note: Note) => boolean;
   canUpdateTask: (task: Task) => boolean;
+};
+
+export type CustomFieldPermissions = {
+  canCreateDefinitions: boolean;
+  canUpdateRecordValues: (entityType: RecordEntityType, target: PermissionTarget) => boolean;
 };
 
 export function deriveDataPermissions(
@@ -83,6 +89,17 @@ export function deriveTimelinePermissions(
         assignedUserId: task.assignedUserId,
         createdBy: task.createdBy
       })
+  };
+}
+
+export function deriveCustomFieldPermissions(
+  session: SessionResponse | null,
+  fallback: boolean
+): CustomFieldPermissions {
+  return {
+    canCreateDefinitions: canSessionAccess(session, "custom_field", "create", fallback),
+    canUpdateRecordValues: (entityType, target) =>
+      canSessionAccess(session, entityType, "update", fallback, target)
   };
 }
 
