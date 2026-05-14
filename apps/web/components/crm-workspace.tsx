@@ -34,6 +34,7 @@ import type {
   ExportEntity,
   SessionResponse,
   OpportunityImportPreview,
+  SearchResult,
   UpdateActivityInput,
   UpdateNoteInput,
   UpdateTaskInput
@@ -174,6 +175,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     taskDueFilter
   });
   const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchingRecords, setSearchingRecords] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const [stageFilter, setStageFilter] = useState<OpportunityStage | "all">("all");
   const [accounts, setAccounts] = useState<Account[]>(initialDashboard.accounts);
   const [leads, setLeads] = useState<Lead[]>(initialDashboard.leads);
@@ -679,6 +683,46 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     const timeout = window.setTimeout(() => setToolbarMessage(""), 2400);
     return () => window.clearTimeout(timeout);
   }, [toolbarMessage]);
+
+  useEffect(() => {
+    const trimmedQuery = query.trim();
+
+    if (!apiBaseUrl || trimmedQuery.length < 2) {
+      setSearchResults([]);
+      setSearchError("");
+      setSearchingRecords(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearchingRecords(true);
+    setSearchError("");
+    const timeout = window.setTimeout(() => {
+      void authenticatedClient()
+        .then((client) => client?.search(trimmedQuery) ?? [])
+        .then((results) => {
+          if (!cancelled) {
+            setSearchResults(results);
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setSearchResults([]);
+            setSearchError(errorSummary(error));
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setSearchingRecords(false);
+          }
+        });
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [apiBaseUrl, authenticatedClient, query]);
 
   async function advanceOpportunity(opportunity: Opportunity) {
     const currentIndex = opportunityStageOrder.indexOf(opportunity.stage);
@@ -1568,6 +1612,16 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }
 
+  function openSearchResult(result: SearchResult) {
+    if (!isRecordSearchResult(result)) {
+      return;
+    }
+
+    setSearchResults([]);
+    setSearchError("");
+    openRecordDetail({ entityType: result.type, id: result.id }, viewForEntityType(result.type));
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar" aria-label="Workspace navigation">
@@ -1679,6 +1733,13 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 {toolbarMessage}
               </p>
             ) : null}
+            <SearchResultsPanel
+              error={searchError}
+              loading={searchingRecords}
+              query={query}
+              results={searchResults}
+              onOpen={openSearchResult}
+            />
           </div>
         </header>
 
@@ -4346,6 +4407,45 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
   );
 }
 
+function SearchResultsPanel({
+  error,
+  loading,
+  query,
+  results,
+  onOpen
+}: {
+  error: string;
+  loading: boolean;
+  query: string;
+  results: SearchResult[];
+  onOpen: (result: SearchResult) => void;
+}) {
+  const trimmedQuery = query.trim();
+
+  if (trimmedQuery.length < 2 || (!loading && !error && results.length === 0)) {
+    return null;
+  }
+
+  return (
+    <section className="search-results" aria-label="Search results">
+      {loading ? <p>Searching</p> : null}
+      {error ? <p>{error}</p> : null}
+      {!loading && !error && results.length === 0 ? <p>No matching records</p> : null}
+      {results.length > 0 ? (
+        <div>
+          {results.map((result) => (
+            <button key={`${result.type}:${result.id}`} onClick={() => onOpen(result)}>
+              <span>{entityTypeLabel(result.type)}</span>
+              <strong>{result.label}</strong>
+              {result.description ? <small>{result.description}</small> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function StatusPill({ value }: { value: string }) {
   return <span className={`status-pill ${value}`}>{value.replace("_", " ")}</span>;
 }
@@ -4736,6 +4836,29 @@ function recordLabel(record: CustomFieldRecord) {
   }
 
   return `${record.firstName} ${record.lastName}`;
+}
+
+function isRecordSearchResult(
+  result: SearchResult
+): result is SearchResult & { type: RecordEntityType } {
+  return ["account", "contact", "lead", "opportunity"].includes(result.type);
+}
+
+function viewForEntityType(entityType: RecordEntityType): ViewMode {
+  switch (entityType) {
+    case "account":
+      return "accounts";
+    case "contact":
+      return "contacts";
+    case "lead":
+      return "leads";
+    case "opportunity":
+      return "pipeline";
+  }
+}
+
+function entityTypeLabel(entityType: string) {
+  return entityType.replace("_", " ");
 }
 
 function formatCurrency(value: number) {
