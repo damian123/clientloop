@@ -25,6 +25,7 @@ ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain cont
 - Object-scope negative API coverage for opportunity and custom-field updates.
 - Object-scope negative API coverage for task, note, and activity corrections.
 - Permission-negative API coverage for bulk export and import preview endpoints.
+- Playwright browser coverage for permission-aware web UI states.
 - Session-scoped permission metadata that drives role-aware bulk data controls in the web UI.
 - Role-aware toolbar create controls for accounts, contacts, leads, and opportunities.
 - Role-aware record detail controls for timeline creation and correction workflows.
@@ -75,6 +76,23 @@ npm run prisma:seed
 The local database helper uses Homebrew PostgreSQL, creates the `clientloop` role and database, and reuses the same `DATABASE_URL` from `.env.example`.
 
 The seed script loads the same canonical demo data used by the in-memory repository. The API uses Prisma when `DATABASE_URL` is set, and can be forced back to memory with `CRM_REPOSITORY=memory`.
+
+## Testing
+
+Run the fast TypeScript test suite:
+
+```bash
+npm test
+```
+
+Run browser-level permission checks against local API and web servers:
+
+```bash
+npm exec playwright install chromium
+npm run test:e2e
+```
+
+The Playwright harness starts isolated local servers on ports `4100` and `3100` with the in-memory repository.
 
 ## Webhooks
 

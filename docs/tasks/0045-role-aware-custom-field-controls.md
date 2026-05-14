@@ -15,5 +15,4 @@ Apply session-derived permissions to custom field definition creation and record
 
 ## Next
 
-- Add end-to-end permission scenarios once the browser test harness exists.
 - Consider a server-returned UI capability summary if permission derivation grows beyond these simple controls.

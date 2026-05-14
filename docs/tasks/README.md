@@ -47,3 +47,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0043-role-aware-timeline-controls.md](./0043-role-aware-timeline-controls.md)
 - [0044-role-aware-task-queue-controls.md](./0044-role-aware-task-queue-controls.md)
 - [0045-role-aware-custom-field-controls.md](./0045-role-aware-custom-field-controls.md)
+- [0046-browser-permission-harness.md](./0046-browser-permission-harness.md)

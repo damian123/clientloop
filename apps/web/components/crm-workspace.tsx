@@ -491,6 +491,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     [apiBaseUrl, session]
   );
   const canCreateInCurrentView = canCreateForView(createPermissions, viewMode);
+  const devLoginUserId = process.env.NEXT_PUBLIC_DEV_LOGIN_USER_ID ?? seedManagerId;
 
   const ensureSession = useCallback(async (): Promise<SessionResponse | null> => {
     if (!apiBaseUrl) {
@@ -499,7 +500,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
     if (
       session?.csrfToken &&
-      (process.env.NODE_ENV === "production" || session.user.id === seedManagerId)
+      (process.env.NODE_ENV === "production" || session.user.id === devLoginUserId)
     ) {
       return session;
     }
@@ -510,13 +511,13 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
         const existingSession = await client.session().catch(() => null);
         if (
           existingSession?.csrfToken &&
-          (process.env.NODE_ENV === "production" || existingSession.user.id === seedManagerId)
+          (process.env.NODE_ENV === "production" || existingSession.user.id === devLoginUserId)
         ) {
           return existingSession;
         }
 
         try {
-          return await client.devLogin({ tenantId: seedTenantId, userId: seedManagerId });
+          return await client.devLogin({ tenantId: seedTenantId, userId: devLoginUserId });
         } catch (error) {
           if (existingSession?.csrfToken) {
             return existingSession;
@@ -540,7 +541,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
 
     return sessionPromiseRef.current;
-  }, [apiBaseUrl, session]);
+  }, [apiBaseUrl, devLoginUserId, session]);
 
   const authenticatedClient = useCallback(async (): Promise<CRMClient | null> => {
     if (!apiBaseUrl) {
