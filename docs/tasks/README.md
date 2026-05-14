@@ -57,3 +57,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0053-data-import-export-e2e-workflow.md](./0053-data-import-export-e2e-workflow.md)
 - [0054-opportunity-stage-e2e-workflow.md](./0054-opportunity-stage-e2e-workflow.md)
 - [0055-account-opportunity-import-workflows.md](./0055-account-opportunity-import-workflows.md)
+- [0056-import-permission-coverage.md](./0056-import-permission-coverage.md)

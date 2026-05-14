@@ -696,7 +696,7 @@ describe("CRM API", () => {
     await app.close();
   });
 
-  it("rejects bulk data endpoints without export or create permissions", async () => {
+  it("rejects bulk data endpoints without export or matching create permissions", async () => {
     const seed = createSeedData();
     seed.roles = seed.roles.map((role) =>
       role.name === "Sales Rep"
@@ -705,15 +705,23 @@ describe("CRM API", () => {
             permissions: role.permissions.filter(
               (permission) =>
                 permission.action !== "export" &&
-                !(permission.resource === "contact" && permission.action === "create")
+                !(
+                  ["account", "contact", "opportunity"].includes(permission.resource) &&
+                  permission.action === "create"
+                )
             )
           }
         : role
     );
     const app = await buildServer({ repository: new InMemoryCRMRepository(seed) });
-    const csv = [
+    const contactCsv = [
       "firstName,lastName,email,phone",
       "Riley,Park,riley.park@example.com,+1 415 555 0188"
+    ].join("\n");
+    const accountCsv = ["name,domain,status", "Blocked Account,blocked.example,prospect"].join("\n");
+    const opportunityCsv = [
+      "name,accountId,ownerUserId,stage,amount,currency,probabilityPct",
+      `Blocked Opportunity,${seedAccounts[0]!.id},${seedUserId},qualification,43000,USD,25`
     ].join("\n");
 
     const exportResponse = await app.inject({
@@ -726,16 +734,65 @@ describe("CRM API", () => {
 
     expect(exportResponse.statusCode).toBe(403);
 
-    const previewResponse = await app.inject({
+    const accountPreviewResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/accounts/preview",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: { csv: accountCsv }
+    });
+    expect(accountPreviewResponse.statusCode).toBe(403);
+
+    const accountImportResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/accounts",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: { csv: accountCsv }
+    });
+    expect(accountImportResponse.statusCode).toBe(403);
+
+    const contactPreviewResponse = await app.inject({
       method: "POST",
       url: "/v1/imports/contacts/preview",
       headers: {
         "x-user-id": seedUserId
       },
-      payload: { csv }
+      payload: { csv: contactCsv }
     });
+    expect(contactPreviewResponse.statusCode).toBe(403);
 
-    expect(previewResponse.statusCode).toBe(403);
+    const contactImportResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/contacts",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: { csv: contactCsv }
+    });
+    expect(contactImportResponse.statusCode).toBe(403);
+
+    const opportunityPreviewResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/opportunities/preview",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: { csv: opportunityCsv }
+    });
+    expect(opportunityPreviewResponse.statusCode).toBe(403);
+
+    const opportunityImportResponse = await app.inject({
+      method: "POST",
+      url: "/v1/imports/opportunities",
+      headers: {
+        "x-user-id": seedUserId
+      },
+      payload: { csv: opportunityCsv }
+    });
+    expect(opportunityImportResponse.statusCode).toBe(403);
     await app.close();
   });
 
