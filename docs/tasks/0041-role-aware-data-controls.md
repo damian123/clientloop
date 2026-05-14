@@ -14,5 +14,5 @@ Expose session permissions to the web app and use them to prevent bulk data acti
 
 ## Next
 
-- Reuse the same session permissions for create buttons and record correction controls.
+- Reuse the same session permissions for record detail timeline actions and correction controls.
 - Add component-level tests once the app has a browser-oriented test harness.

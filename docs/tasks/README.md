@@ -43,3 +43,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0039-timeline-correction-scope-coverage.md](./0039-timeline-correction-scope-coverage.md)
 - [0040-bulk-data-permission-coverage.md](./0040-bulk-data-permission-coverage.md)
 - [0041-role-aware-data-controls.md](./0041-role-aware-data-controls.md)
+- [0042-role-aware-create-controls.md](./0042-role-aware-create-controls.md)

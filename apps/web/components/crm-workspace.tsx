@@ -47,8 +47,6 @@ import type {
   Note,
   Opportunity,
   OpportunityStage,
-  PermissionAction,
-  PermissionResource,
   RecordEntityType,
   Task
 } from "@clientloop/domain";
@@ -71,6 +69,14 @@ import {
   type LeadCreateDraft,
   type OpportunityCreateDraft
 } from "../lib/create-record-inputs";
+import {
+  canCreateForView,
+  canExportEntity,
+  deriveCreatePermissions,
+  deriveDataPermissions,
+  type CreatePermissions,
+  type DataPermissions
+} from "../lib/session-permissions";
 
 type ViewMode = "pipeline" | "leads" | "accounts" | "contacts" | "data";
 type CustomFieldDraft = {
@@ -81,12 +87,6 @@ type CustomFieldDraft = {
   required: boolean;
   isIndexed: boolean;
   options: string;
-};
-type DataPermissions = {
-  canExportAccounts: boolean;
-  canExportContacts: boolean;
-  canExportOpportunities: boolean;
-  canImportContacts: boolean;
 };
 type CustomFieldRecord = Account | Contact | Lead | Opportunity;
 type CustomFieldValueDrafts = Record<string, Record<string, string>>;
@@ -471,14 +471,14 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     : session?.user.displayName ?? (sessionError ? "Unavailable" : "Connecting");
   const sessionStateLabel = !apiBaseUrl ? "Seed data" : sessionError ? "Offline" : "Signed in";
   const dataPermissions = useMemo<DataPermissions>(
-    () => ({
-      canExportAccounts: canSessionAccess(session, "account", "export", !apiBaseUrl),
-      canExportContacts: canSessionAccess(session, "contact", "export", !apiBaseUrl),
-      canExportOpportunities: canSessionAccess(session, "opportunity", "export", !apiBaseUrl),
-      canImportContacts: canSessionAccess(session, "contact", "create", !apiBaseUrl)
-    }),
+    () => deriveDataPermissions(session, !apiBaseUrl),
     [apiBaseUrl, session]
   );
+  const createPermissions = useMemo<CreatePermissions>(
+    () => deriveCreatePermissions(session, !apiBaseUrl),
+    [apiBaseUrl, session]
+  );
+  const canCreateInCurrentView = canCreateForView(createPermissions, viewMode);
 
   const ensureSession = useCallback(async (): Promise<SessionResponse | null> => {
     if (!apiBaseUrl) {
@@ -576,28 +576,48 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }, [apiBaseUrl, applyDashboard, authenticatedClient, initialDashboard, refreshingDashboard]);
 
   const openLeadCreate = useCallback(() => {
+    if (!createPermissions.canCreateLeads) {
+      setToolbarMessage("Lead creation is not permitted");
+      return;
+    }
+
     setLeadCreateOpen(true);
     setLeadMessage("");
     changeViewMode("leads");
-  }, [changeViewMode]);
+  }, [changeViewMode, createPermissions.canCreateLeads]);
 
   const openAccountCreate = useCallback(() => {
+    if (!createPermissions.canCreateAccounts) {
+      setToolbarMessage("Account creation is not permitted");
+      return;
+    }
+
     setAccountCreateOpen(true);
     setAccountMessage("");
     changeViewMode("accounts");
-  }, [changeViewMode]);
+  }, [changeViewMode, createPermissions.canCreateAccounts]);
 
   const openContactCreate = useCallback(() => {
+    if (!createPermissions.canCreateContacts) {
+      setToolbarMessage("Contact creation is not permitted");
+      return;
+    }
+
     setContactCreateOpen(true);
     setContactMessage("");
     changeViewMode("contacts");
-  }, [changeViewMode]);
+  }, [changeViewMode, createPermissions.canCreateContacts]);
 
   const openOpportunityCreate = useCallback(() => {
+    if (!createPermissions.canCreateOpportunities) {
+      setToolbarMessage("Opportunity creation is not permitted");
+      return;
+    }
+
     setOpportunityCreateOpen(true);
     setOpportunityMessage("");
     changeViewMode("pipeline");
-  }, [changeViewMode]);
+  }, [changeViewMode, createPermissions.canCreateOpportunities]);
 
   const openContextualCreate = useCallback(() => {
     if (viewMode === "pipeline") {
@@ -615,7 +635,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       return;
     }
 
-    openLeadCreate();
+    if (viewMode === "leads") {
+      openLeadCreate();
+      return;
+    }
+
+    setToolbarMessage("No create action is available in this view");
   }, [openAccountCreate, openContactCreate, openLeadCreate, openOpportunityCreate, viewMode]);
 
   useEffect(() => {
@@ -896,6 +921,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   async function createAccountFromToolbar() {
+    if (!createPermissions.canCreateAccounts) {
+      setAccountMessage("Account creation is not permitted");
+      return;
+    }
+
     const input = accountCreateInput(accountCreateDraft);
     if (!input || creatingAccount) {
       return;
@@ -943,6 +973,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   async function createContactFromToolbar() {
+    if (!createPermissions.canCreateContacts) {
+      setContactMessage("Contact creation is not permitted");
+      return;
+    }
+
     const input = contactCreateInput(contactCreateDraft);
     if (!input || creatingContact) {
       return;
@@ -992,6 +1027,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   async function createLeadFromToolbar() {
+    if (!createPermissions.canCreateLeads) {
+      setLeadMessage("Lead creation is not permitted");
+      return;
+    }
+
     const input = leadCreateInput(leadCreateDraft);
     if (!input || creatingLead) {
       return;
@@ -1040,6 +1080,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   async function createOpportunityFromToolbar() {
+    if (!createPermissions.canCreateOpportunities) {
+      setOpportunityMessage("Opportunity creation is not permitted");
+      return;
+    }
+
     const input = opportunityCreateInput(
       opportunityCreateDraft,
       session?.user.id ?? seedManagerId
@@ -1467,7 +1512,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               >
                 <Copy size={18} />
               </button>
-              <button className="command-button" onClick={openContextualCreate}>
+              <button
+                className="command-button"
+                disabled={!canCreateInCurrentView}
+                onClick={openContextualCreate}
+              >
                 <Plus size={18} /> New
               </button>
             </div>
@@ -4537,47 +4586,6 @@ function activityPayloadSummary(activity: CRMActivity) {
   }
 
   return details.join(" / ");
-}
-
-function canSessionAccess(
-  session: SessionResponse | null,
-  resource: PermissionResource,
-  action: PermissionAction,
-  fallback: boolean
-) {
-  if (fallback) {
-    return true;
-  }
-
-  if (!session) {
-    return false;
-  }
-
-  if (
-    session.user.permissions.some(
-      (permission) => permission.resource === "admin" && permission.action === "manage"
-    )
-  ) {
-    return true;
-  }
-
-  return session.user.permissions.some(
-    (permission) =>
-      permission.resource === resource &&
-      (permission.action === action || permission.action === "manage") &&
-      (permission.condition === "tenant" || permission.condition === "all")
-  );
-}
-
-function canExportEntity(permissions: DataPermissions, entity: ExportEntity) {
-  switch (entity) {
-    case "accounts":
-      return permissions.canExportAccounts;
-    case "contacts":
-      return permissions.canExportContacts;
-    case "opportunities":
-      return permissions.canExportOpportunities;
-  }
 }
 
 function errorSummary(error: unknown) {
