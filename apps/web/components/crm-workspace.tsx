@@ -21,7 +21,7 @@ import {
   X
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import type { ReactNode } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AppendNoteInput,
@@ -176,6 +176,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   });
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(-1);
   const [searchingRecords, setSearchingRecords] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [stageFilter, setStageFilter] = useState<OpportunityStage | "all">("all");
@@ -723,6 +724,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       window.clearTimeout(timeout);
     };
   }, [apiBaseUrl, authenticatedClient, query]);
+
+  useEffect(() => {
+    setActiveSearchResultIndex(searchResults.length > 0 ? 0 : -1);
+  }, [searchResults]);
 
   async function advanceOpportunity(opportunity: Opportunity) {
     const currentIndex = opportunityStageOrder.indexOf(opportunity.stage);
@@ -1619,7 +1624,41 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
 
     setSearchResults([]);
     setSearchError("");
+    setActiveSearchResultIndex(-1);
     openRecordDetail({ entityType: result.type, id: result.id }, viewForEntityType(result.type));
+  }
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (searchResults.length === 0) {
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActiveSearchResultIndex((current) => (current + 1) % searchResults.length);
+      return;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActiveSearchResultIndex(
+        (current) => (current <= 0 ? searchResults.length : current) - 1
+      );
+      return;
+    }
+
+    if (event.key === "Enter" && activeSearchResultIndex >= 0) {
+      event.preventDefault();
+      openSearchResult(searchResults[activeSearchResultIndex]!);
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setSearchResults([]);
+      setSearchError("");
+      setActiveSearchResultIndex(-1);
+    }
   }
 
   return (
@@ -1698,8 +1737,16 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 <Search size={17} aria-hidden="true" />
                 <span className="sr-only">Search records</span>
                 <input
+                  aria-activedescendant={
+                    activeSearchResultIndex >= 0 && searchResults[activeSearchResultIndex]
+                      ? searchResultId(searchResults[activeSearchResultIndex]!)
+                      : undefined
+                  }
+                  aria-controls="global-search-results"
+                  aria-expanded={searchResults.length > 0}
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
+                  onKeyDown={handleSearchKeyDown}
                   placeholder="Search records"
                 />
               </label>
@@ -1734,10 +1781,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               </p>
             ) : null}
             <SearchResultsPanel
+              activeIndex={activeSearchResultIndex}
               error={searchError}
               loading={searchingRecords}
               query={query}
               results={searchResults}
+              onActiveIndexChange={setActiveSearchResultIndex}
               onOpen={openSearchResult}
             />
           </div>
@@ -4408,16 +4457,20 @@ function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; 
 }
 
 function SearchResultsPanel({
+  activeIndex,
   error,
   loading,
   query,
   results,
+  onActiveIndexChange,
   onOpen
 }: {
+  activeIndex: number;
   error: string;
   loading: boolean;
   query: string;
   results: SearchResult[];
+  onActiveIndexChange: (index: number) => void;
   onOpen: (result: SearchResult) => void;
 }) {
   const trimmedQuery = query.trim();
@@ -4427,14 +4480,24 @@ function SearchResultsPanel({
   }
 
   return (
-    <section className="search-results" aria-label="Search results">
+    <section
+      className="search-results"
+      id="global-search-results"
+      aria-label="Search results"
+    >
       {loading ? <p>Searching</p> : null}
       {error ? <p>{error}</p> : null}
       {!loading && !error && results.length === 0 ? <p>No matching records</p> : null}
       {results.length > 0 ? (
         <div>
-          {results.map((result) => (
-            <button key={`${result.type}:${result.id}`} onClick={() => onOpen(result)}>
+          {results.map((result, index) => (
+            <button
+              key={`${result.type}:${result.id}`}
+              id={searchResultId(result)}
+              data-active={index === activeIndex ? "true" : undefined}
+              onClick={() => onOpen(result)}
+              onMouseEnter={() => onActiveIndexChange(index)}
+            >
               <span>{entityTypeLabel(result.type)}</span>
               <strong>{result.label}</strong>
               {result.description ? <small>{result.description}</small> : null}
@@ -4859,6 +4922,10 @@ function viewForEntityType(entityType: RecordEntityType): ViewMode {
 
 function entityTypeLabel(entityType: string) {
   return entityType.replace("_", " ");
+}
+
+function searchResultId(result: SearchResult) {
+  return `search-result-${result.type}-${result.id}`;
 }
 
 function formatCurrency(value: number) {

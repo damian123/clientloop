@@ -59,3 +59,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0055-account-opportunity-import-workflows.md](./0055-account-opportunity-import-workflows.md)
 - [0056-import-permission-coverage.md](./0056-import-permission-coverage.md)
 - [0057-global-search-ui.md](./0057-global-search-ui.md)
+- [0058-search-keyboard-navigation.md](./0058-search-keyboard-navigation.md)
