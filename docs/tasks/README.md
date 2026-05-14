@@ -51,3 +51,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0047-toolbar-create-e2e-coverage.md](./0047-toolbar-create-e2e-coverage.md)
 - [0048-timeline-task-e2e-coverage.md](./0048-timeline-task-e2e-coverage.md)
 - [0049-e2e-ci-template.md](./0049-e2e-ci-template.md)
+- [0050-timeline-create-e2e-workflow.md](./0050-timeline-create-e2e-workflow.md)
