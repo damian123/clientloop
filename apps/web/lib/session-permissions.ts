@@ -1,7 +1,19 @@
 import type { ExportEntity, SessionResponse } from "@clientloop/contracts";
-import type { PermissionAction, PermissionResource } from "@clientloop/domain";
+import type {
+  Activity,
+  Note,
+  PermissionAction,
+  PermissionResource,
+  Task
+} from "@clientloop/domain";
 
 export type CreateViewMode = "pipeline" | "leads" | "accounts" | "contacts" | "data";
+
+type PermissionTarget = {
+  ownerUserId?: string | null;
+  assignedUserId?: string | null;
+  createdBy?: string | null;
+};
 
 export type DataPermissions = {
   canExportAccounts: boolean;
@@ -15,6 +27,15 @@ export type CreatePermissions = {
   canCreateContacts: boolean;
   canCreateLeads: boolean;
   canCreateOpportunities: boolean;
+};
+
+export type TimelinePermissions = {
+  canCreateActivities: boolean;
+  canCreateNotes: boolean;
+  canCreateTasks: boolean;
+  canUpdateActivity: (activity: Activity) => boolean;
+  canUpdateNote: (note: Note) => boolean;
+  canUpdateTask: (task: Task) => boolean;
 };
 
 export function deriveDataPermissions(
@@ -41,11 +62,36 @@ export function deriveCreatePermissions(
   };
 }
 
+export function deriveTimelinePermissions(
+  session: SessionResponse | null,
+  fallback: boolean
+): TimelinePermissions {
+  return {
+    canCreateActivities: canSessionAccess(session, "activity", "create", fallback),
+    canCreateNotes: canSessionAccess(session, "note", "create", fallback),
+    canCreateTasks: canSessionAccess(session, "task", "create", fallback),
+    canUpdateActivity: (activity) =>
+      canSessionAccess(session, "activity", "update", fallback, {
+        createdBy: activity.createdBy
+      }),
+    canUpdateNote: (note) =>
+      canSessionAccess(session, "note", "update", fallback, {
+        createdBy: note.createdBy
+      }),
+    canUpdateTask: (task) =>
+      canSessionAccess(session, "task", "update", fallback, {
+        assignedUserId: task.assignedUserId,
+        createdBy: task.createdBy
+      })
+  };
+}
+
 export function canSessionAccess(
   session: SessionResponse | null,
   resource: PermissionResource,
   action: PermissionAction,
-  fallback: boolean
+  fallback: boolean,
+  target?: PermissionTarget
 ) {
   if (fallback) {
     return true;
@@ -64,10 +110,29 @@ export function canSessionAccess(
   }
 
   return session.user.permissions.some(
-    (permission) =>
-      permission.resource === resource &&
-      (permission.action === action || permission.action === "manage") &&
-      (permission.condition === "tenant" || permission.condition === "all")
+    (permission) => {
+      if (permission.resource !== resource) {
+        return false;
+      }
+
+      if (permission.action !== action && permission.action !== "manage") {
+        return false;
+      }
+
+      if (permission.condition === "tenant" || permission.condition === "all") {
+        return true;
+      }
+
+      if (permission.condition === "own" && target) {
+        return (
+          target.ownerUserId === session.user.id ||
+          target.assignedUserId === session.user.id ||
+          target.createdBy === session.user.id
+        );
+      }
+
+      return false;
+    }
   );
 }
 

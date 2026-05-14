@@ -14,5 +14,5 @@ Reuse session permissions to prevent the web workspace from offering create acti
 
 ## Next
 
-- Apply the same permission model to record detail timeline actions: task creation, notes, activities, and correction controls.
+- Apply the same permission model to the task queue edit and complete actions.
 - Add a browser component test harness for permission-aware UI states.

@@ -74,8 +74,10 @@ import {
   canExportEntity,
   deriveCreatePermissions,
   deriveDataPermissions,
+  deriveTimelinePermissions,
   type CreatePermissions,
-  type DataPermissions
+  type DataPermissions,
+  type TimelinePermissions
 } from "../lib/session-permissions";
 
 type ViewMode = "pipeline" | "leads" | "accounts" | "contacts" | "data";
@@ -476,6 +478,10 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   );
   const createPermissions = useMemo<CreatePermissions>(
     () => deriveCreatePermissions(session, !apiBaseUrl),
+    [apiBaseUrl, session]
+  );
+  const timelinePermissions = useMemo<TimelinePermissions>(
+    () => deriveTimelinePermissions(session, !apiBaseUrl),
     [apiBaseUrl, session]
   );
   const canCreateInCurrentView = canCreateForView(createPermissions, viewMode);
@@ -1680,6 +1686,8 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 record={selectedRecordDetail.record}
                 savingCustomFieldRecordId={savingCustomFieldRecordId}
                 tasks={tasks}
+                timelinePermissions={timelinePermissions}
+                currentUserId={session?.user.id ?? seedManagerId}
                 onClose={closeRecordDetail}
                 onAppendNote={appendRecordNote}
                 onCreateActivity={logRecordActivity}
@@ -2688,6 +2696,8 @@ function RecordDetailPanel({
   record,
   savingCustomFieldRecordId,
   tasks,
+  timelinePermissions,
+  currentUserId,
   onClose,
   onAppendNote,
   onCreateActivity,
@@ -2710,6 +2720,8 @@ function RecordDetailPanel({
   record: CustomFieldRecord;
   savingCustomFieldRecordId: string | null;
   tasks: Task[];
+  timelinePermissions: TimelinePermissions;
+  currentUserId: string;
   onClose: () => void;
   onAppendNote: (input: AppendNoteInput) => Promise<Note>;
   onCreateActivity: (input: CreateActivityInput) => Promise<CRMActivity>;
@@ -2870,6 +2882,11 @@ function RecordDetailPanel({
   }, [entityType, record.id]);
 
   async function submitTask() {
+    if (!timelinePermissions.canCreateTasks) {
+      setTaskMessage("Task creation is not permitted");
+      return;
+    }
+
     const title = taskDraft.title.trim();
     if (!title || creatingTask) {
       return;
@@ -2884,7 +2901,7 @@ function RecordDetailPanel({
         description: taskDraft.description.trim() || undefined,
         priority: taskDraft.priority,
         dueAt: taskDraft.dueAt || undefined,
-        assignedUserId: seedManagerId
+        assignedUserId: currentUserId
       });
       setTaskDraft({
         title: "",
@@ -2901,6 +2918,11 @@ function RecordDetailPanel({
   }
 
   function startTaskEdit(task: Task) {
+    if (!timelinePermissions.canUpdateTask(task)) {
+      setTaskEditMessage("Task correction is not permitted");
+      return;
+    }
+
     setEditingTaskId(task.id);
     setTaskEditDraft({
       title: task.title,
@@ -2918,6 +2940,11 @@ function RecordDetailPanel({
   }
 
   async function submitTaskEdit(task: Task) {
+    if (!timelinePermissions.canUpdateTask(task)) {
+      setTaskEditMessage("Task correction is not permitted");
+      return;
+    }
+
     const title = taskEditDraft.title.trim();
     if (!title || savingTaskEdit) {
       return;
@@ -2942,6 +2969,11 @@ function RecordDetailPanel({
   }
 
   async function submitNote() {
+    if (!timelinePermissions.canCreateNotes) {
+      setNoteMessage("Note creation is not permitted");
+      return;
+    }
+
     const body = noteBody.trim();
     if (!body || savingNote) {
       return;
@@ -2965,6 +2997,11 @@ function RecordDetailPanel({
   }
 
   function startNoteEdit(note: Note) {
+    if (!timelinePermissions.canUpdateNote(note)) {
+      setNoteEditMessage("Note correction is not permitted");
+      return;
+    }
+
     setEditingNoteId(note.id);
     setNoteEditBody(note.body);
     setNoteEditMessage("");
@@ -2977,6 +3014,11 @@ function RecordDetailPanel({
   }
 
   async function submitNoteEdit(note: Note) {
+    if (!timelinePermissions.canUpdateNote(note)) {
+      setNoteEditMessage("Note correction is not permitted");
+      return;
+    }
+
     const body = noteEditBody.trim();
     if (!body || savingNoteEdit) {
       return;
@@ -2999,6 +3041,11 @@ function RecordDetailPanel({
   }
 
   async function submitActivity() {
+    if (!timelinePermissions.canCreateActivities) {
+      setActivityMessage("Activity logging is not permitted");
+      return;
+    }
+
     const subject = activityDraft.subject.trim();
     if (!subject || savingActivity) {
       return;
@@ -3027,6 +3074,11 @@ function RecordDetailPanel({
   }
 
   function startActivityEdit(activity: CRMActivity) {
+    if (!timelinePermissions.canUpdateActivity(activity)) {
+      setActivityEditMessage("Activity correction is not permitted");
+      return;
+    }
+
     setEditingActivityId(activity.id);
     setActivityEditDraft({
       subject: activity.subject,
@@ -3045,6 +3097,11 @@ function RecordDetailPanel({
   }
 
   async function submitActivityEdit(activity: CRMActivity) {
+    if (!timelinePermissions.canUpdateActivity(activity)) {
+      setActivityEditMessage("Activity correction is not permitted");
+      return;
+    }
+
     const subject = activityEditDraft.subject.trim();
     if (!subject || savingActivityEdit) {
       return;
@@ -3169,7 +3226,9 @@ function RecordDetailPanel({
           </label>
           <button
             className="table-action"
-            disabled={creatingTask || taskDraft.title.trim().length === 0}
+            disabled={
+              creatingTask || !timelinePermissions.canCreateTasks || taskDraft.title.trim().length === 0
+            }
             onClick={submitTask}
           >
             <Plus size={16} /> Add task
@@ -3194,7 +3253,7 @@ function RecordDetailPanel({
           </label>
           <button
             className="table-action"
-            disabled={savingNote || noteBody.trim().length === 0}
+            disabled={savingNote || !timelinePermissions.canCreateNotes || noteBody.trim().length === 0}
             onClick={submitNote}
           >
             <Plus size={16} /> Save note
@@ -3246,7 +3305,11 @@ function RecordDetailPanel({
           />
           <button
             className="table-action"
-            disabled={savingActivity || activityDraft.subject.trim().length === 0}
+            disabled={
+              savingActivity ||
+              !timelinePermissions.canCreateActivities ||
+              activityDraft.subject.trim().length === 0
+            }
             onClick={submitActivity}
           >
             <Plus size={16} /> Log activity
@@ -3338,7 +3401,11 @@ function RecordDetailPanel({
                   <div className="activity-edit-actions">
                     <button
                       className="table-action"
-                      disabled={savingTaskEdit || taskEditDraft.title.trim().length === 0}
+                      disabled={
+                        savingTaskEdit ||
+                        !timelinePermissions.canUpdateTask(item.task) ||
+                        taskEditDraft.title.trim().length === 0
+                      }
                       onClick={() => {
                         if (item.task) {
                           submitTaskEdit(item.task);
@@ -3365,7 +3432,11 @@ function RecordDetailPanel({
                   <div className="activity-edit-actions">
                     <button
                       className="table-action"
-                      disabled={savingNoteEdit || noteEditBody.trim().length === 0}
+                      disabled={
+                        savingNoteEdit ||
+                        !timelinePermissions.canUpdateNote(item.note) ||
+                        noteEditBody.trim().length === 0
+                      }
                       onClick={() => {
                         if (item.note) {
                           submitNoteEdit(item.note);
@@ -3406,7 +3477,11 @@ function RecordDetailPanel({
                   <div className="activity-edit-actions">
                     <button
                       className="table-action"
-                      disabled={savingActivityEdit || activityEditDraft.subject.trim().length === 0}
+                      disabled={
+                        savingActivityEdit ||
+                        !timelinePermissions.canUpdateActivity(item.activity) ||
+                        activityEditDraft.subject.trim().length === 0
+                      }
                       onClick={() => {
                         if (item.activity) {
                           submitActivityEdit(item.activity);
@@ -3428,6 +3503,7 @@ function RecordDetailPanel({
                   {item.activity ? (
                     <button
                       className="timeline-edit-button"
+                      disabled={!timelinePermissions.canUpdateActivity(item.activity)}
                       onClick={() => {
                         if (item.activity) {
                           startActivityEdit(item.activity);
@@ -3440,6 +3516,7 @@ function RecordDetailPanel({
                   {item.note ? (
                     <button
                       className="timeline-edit-button"
+                      disabled={!timelinePermissions.canUpdateNote(item.note)}
                       onClick={() => {
                         if (item.note) {
                           startNoteEdit(item.note);
@@ -3452,6 +3529,7 @@ function RecordDetailPanel({
                   {item.task ? (
                     <button
                       className="timeline-edit-button"
+                      disabled={!timelinePermissions.canUpdateTask(item.task)}
                       onClick={() => {
                         if (item.task) {
                           startTaskEdit(item.task);

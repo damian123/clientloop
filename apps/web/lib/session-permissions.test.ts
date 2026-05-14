@@ -4,7 +4,8 @@ import { seedTenantId, seedUserId } from "@clientloop/domain";
 import {
   canCreateForView,
   deriveCreatePermissions,
-  deriveDataPermissions
+  deriveDataPermissions,
+  deriveTimelinePermissions
 } from "./session-permissions";
 
 describe("session permission helpers", () => {
@@ -47,6 +48,32 @@ describe("session permission helpers", () => {
 
     expect(canCreateForView(createPermissions, "pipeline")).toBe(true);
     expect(canCreateForView(createPermissions, "data")).toBe(false);
+  });
+
+  it("maps own-scoped timeline update permissions to matching records", () => {
+    const session = sessionWithPermissions([
+      { id: "task-update", resource: "task", action: "update", condition: "own" },
+      { id: "note-update", resource: "note", action: "update", condition: "own" },
+      { id: "activity-update", resource: "activity", action: "update", condition: "own" }
+    ]);
+    const permissions = deriveTimelinePermissions(session, false);
+
+    expect(
+      permissions.canUpdateTask({
+        assignedUserId: seedUserId,
+        createdBy: "other-user"
+      } as Parameters<typeof permissions.canUpdateTask>[0])
+    ).toBe(true);
+    expect(
+      permissions.canUpdateNote({
+        createdBy: seedUserId
+      } as Parameters<typeof permissions.canUpdateNote>[0])
+    ).toBe(true);
+    expect(
+      permissions.canUpdateActivity({
+        createdBy: "other-user"
+      } as Parameters<typeof permissions.canUpdateActivity>[0])
+    ).toBe(false);
   });
 });
 
