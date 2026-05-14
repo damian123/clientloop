@@ -41,5 +41,5 @@ Completed for initial scaffold.
 - [ ] Add OAuth/OIDC BFF session handling with secure cookies and CSRF protection.
 - [x] Persist outbox events and implement webhook delivery retries with signed payloads.
 - [ ] Add import/export jobs and CSV field mapping.
-- [ ] Add Playwright end-to-end coverage for opportunity stage movement and task completion.
+- [x] Add Playwright end-to-end coverage for opportunity stage movement and task completion.
 - [ ] Add optional GraphQL read layer for dense record detail screens.

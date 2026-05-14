@@ -55,3 +55,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0051-task-completion-e2e-workflow.md](./0051-task-completion-e2e-workflow.md)
 - [0052-timeline-correction-e2e-workflow.md](./0052-timeline-correction-e2e-workflow.md)
 - [0053-data-import-export-e2e-workflow.md](./0053-data-import-export-e2e-workflow.md)
+- [0054-opportunity-stage-e2e-workflow.md](./0054-opportunity-stage-e2e-workflow.md)
