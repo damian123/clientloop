@@ -10,8 +10,8 @@ Cover successful record timeline creation flows in the browser test harness.
 - [x] Added a browser workflow for appending a record note.
 - [x] Added a browser workflow for logging a record activity.
 - [x] Asserted success messages and rendered timeline entries for each created artifact.
+- [x] Completed the isolated test-created task from the task queue and asserted the done state.
 
 ## Next
 
 - Add browser coverage for successful task, note, and activity correction submissions after mutation flows stabilize.
-- Add browser coverage for successful task completion using isolated test-created tasks.

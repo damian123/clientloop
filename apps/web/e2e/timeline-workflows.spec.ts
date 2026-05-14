@@ -21,6 +21,12 @@ test("sales rep can create record timeline task, note, and activity entries", as
   await expect(page.getByText("Task added")).toBeVisible();
   await expect(recordTimeline.getByText(taskTitle)).toBeVisible();
 
+  const createdTask = page.locator("article").filter({ hasText: taskTitle });
+  await expect(createdTask).toContainText("open / medium");
+  await createdTask.getByRole("button", { name: `Complete ${taskTitle}` }).click();
+  await expect(createdTask).toContainText("done / medium");
+  await expect(createdTask.getByRole("button", { name: `Complete ${taskTitle}` })).toBeDisabled();
+
   const noteRegion = page.getByRole("region", { name: "Record notes" });
   await noteRegion.getByRole("textbox", { name: "Note" }).fill(noteBody);
   await noteRegion.getByRole("button", { name: "Save note" }).click();
