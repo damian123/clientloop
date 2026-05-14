@@ -89,3 +89,62 @@ test("contextual New is disabled when the session lacks create permissions", asy
   await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New", exact: true })).toBeDisabled();
 });
+
+test("timeline create and correction controls are disabled without timeline permissions", async ({ page }) => {
+  await page.route(`${apiBaseUrl}/v1/session`, async (route) => {
+    await route.fulfill({ json: noCreateSession });
+  });
+
+  await page.goto(ownedAccountPath);
+
+  await expect(page.getByText("Alex Rep")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Northstar Robotics" })).toBeVisible();
+
+  await page
+    .getByRole("region", { name: "Create follow-up task" })
+    .getByRole("textbox", { name: "Title" })
+    .fill("Permission blocked task");
+  await expect(
+    page.getByRole("region", { name: "Create follow-up task" }).getByRole("button", { name: "Add task" })
+  ).toBeDisabled();
+
+  await page
+    .getByRole("region", { name: "Record notes" })
+    .getByRole("textbox", { name: "Note" })
+    .fill("Permission blocked note");
+  await expect(
+    page.getByRole("region", { name: "Record notes" }).getByRole("button", { name: "Save note" })
+  ).toBeDisabled();
+
+  await page
+    .getByRole("region", { name: "Log activity" })
+    .getByRole("textbox", { name: "Subject" })
+    .fill("Permission blocked activity");
+  await expect(
+    page.getByRole("region", { name: "Log activity" }).getByRole("button", { name: "Log activity" })
+  ).toBeDisabled();
+
+  await expect(page.getByRole("button", { name: "Edit note" })).toBeDisabled();
+});
+
+test("task queue update controls follow task update permissions", async ({ page }) => {
+  await page.goto("/?view=pipeline");
+
+  await expect(page.getByText("Alex Rep")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today and next" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Send discovery recap" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Complete Send discovery recap" })).toBeEnabled();
+});
+
+test("task queue update controls are disabled without task update permissions", async ({ page }) => {
+  await page.route(`${apiBaseUrl}/v1/session`, async (route) => {
+    await route.fulfill({ json: noCreateSession });
+  });
+
+  await page.goto("/?view=pipeline");
+
+  await expect(page.getByText("Alex Rep")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today and next" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Send discovery recap" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Complete Send discovery recap" })).toBeDisabled();
+});

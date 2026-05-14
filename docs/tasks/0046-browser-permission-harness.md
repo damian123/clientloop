@@ -12,9 +12,10 @@ Add a repeatable browser-level test harness for permission-aware UI states.
 - [x] Added a development login user override so browser tests can exercise the Sales Rep session.
 - [x] Covered custom-field editing controls for owned versus manager-owned account records.
 - [x] Covered role-aware toolbar New controls for create-capable views, Data view, and no-create sessions.
+- [x] Covered timeline create and correction controls for sessions without timeline permissions.
+- [x] Covered task queue edit and complete controls for allowed and denied task update permissions.
 - [x] Documented local browser test setup.
 
 ## Next
 
-- Add browser coverage for timeline and task queue controls.
 - Consider adding the e2e suite to CI after browser installation time is acceptable.

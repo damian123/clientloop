@@ -13,5 +13,4 @@ Cover role-aware contextual `New` toolbar states in the browser test harness.
 
 ## Next
 
-- Add browser coverage for timeline creation and correction controls.
-- Add browser coverage for task queue edit and complete controls.
+- Consider adding the e2e suite to CI after browser installation time is acceptable.

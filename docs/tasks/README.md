@@ -49,3 +49,4 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0045-role-aware-custom-field-controls.md](./0045-role-aware-custom-field-controls.md)
 - [0046-browser-permission-harness.md](./0046-browser-permission-harness.md)
 - [0047-toolbar-create-e2e-coverage.md](./0047-toolbar-create-e2e-coverage.md)
+- [0048-timeline-task-e2e-coverage.md](./0048-timeline-task-e2e-coverage.md)
