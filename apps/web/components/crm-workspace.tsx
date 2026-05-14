@@ -47,6 +47,8 @@ import type {
   Note,
   Opportunity,
   OpportunityStage,
+  PermissionAction,
+  PermissionResource,
   RecordEntityType,
   Task
 } from "@clientloop/domain";
@@ -79,6 +81,12 @@ type CustomFieldDraft = {
   required: boolean;
   isIndexed: boolean;
   options: string;
+};
+type DataPermissions = {
+  canExportAccounts: boolean;
+  canExportContacts: boolean;
+  canExportOpportunities: boolean;
+  canImportContacts: boolean;
 };
 type CustomFieldRecord = Account | Contact | Lead | Opportunity;
 type CustomFieldValueDrafts = Record<string, Record<string, string>>;
@@ -462,6 +470,15 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     ? "Local demo"
     : session?.user.displayName ?? (sessionError ? "Unavailable" : "Connecting");
   const sessionStateLabel = !apiBaseUrl ? "Seed data" : sessionError ? "Offline" : "Signed in";
+  const dataPermissions = useMemo<DataPermissions>(
+    () => ({
+      canExportAccounts: canSessionAccess(session, "account", "export", !apiBaseUrl),
+      canExportContacts: canSessionAccess(session, "contact", "export", !apiBaseUrl),
+      canExportOpportunities: canSessionAccess(session, "opportunity", "export", !apiBaseUrl),
+      canImportContacts: canSessionAccess(session, "contact", "create", !apiBaseUrl)
+    }),
+    [apiBaseUrl, session]
+  );
 
   const ensureSession = useCallback(async (): Promise<SessionResponse | null> => {
     if (!apiBaseUrl) {
@@ -1140,6 +1157,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       return;
     }
 
+    if (!canExportEntity(dataPermissions, entity)) {
+      setDataMessage("Export is not permitted");
+      return;
+    }
+
     setDataBusy(true);
     setDataMessage("");
     try {
@@ -1169,6 +1191,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       return;
     }
 
+    if (!dataPermissions.canImportContacts) {
+      setDataMessage("Import preview is not permitted");
+      return;
+    }
+
     setDataBusy(true);
     setDataMessage("");
     try {
@@ -1189,6 +1216,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   async function importContactCsv() {
     if (!apiBaseUrl) {
       setDataMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportContacts) {
+      setDataMessage("Import is not permitted");
       return;
     }
 
@@ -1570,6 +1602,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 customFieldDraft={customFieldDraft}
                 dataBusy={dataBusy}
                 dataMessage={dataMessage}
+                dataPermissions={dataPermissions}
                 importPreview={importPreview}
                 onContactCsvChange={setContactCsv}
                 onCreateCustomField={createCustomFieldDefinition}
@@ -2337,6 +2370,7 @@ function DataView({
   customFieldDraft,
   dataBusy,
   dataMessage,
+  dataPermissions,
   importPreview,
   onContactCsvChange,
   onCreateCustomField,
@@ -2350,6 +2384,7 @@ function DataView({
   customFieldDraft: CustomFieldDraft;
   dataBusy: boolean;
   dataMessage: string;
+  dataPermissions: DataPermissions;
   importPreview: ContactImportPreview | null;
   onContactCsvChange: (value: string) => void;
   onCreateCustomField: () => void;
@@ -2374,13 +2409,22 @@ function DataView({
             <h4>Core records</h4>
           </div>
           <div className="data-actions">
-            <button disabled={dataBusy} onClick={() => onExport("accounts")}>
+            <button
+              disabled={dataBusy || !dataPermissions.canExportAccounts}
+              onClick={() => onExport("accounts")}
+            >
               <Download size={16} /> Accounts
             </button>
-            <button disabled={dataBusy} onClick={() => onExport("contacts")}>
+            <button
+              disabled={dataBusy || !dataPermissions.canExportContacts}
+              onClick={() => onExport("contacts")}
+            >
               <Download size={16} /> Contacts
             </button>
-            <button disabled={dataBusy} onClick={() => onExport("opportunities")}>
+            <button
+              disabled={dataBusy || !dataPermissions.canExportOpportunities}
+              onClick={() => onExport("opportunities")}
+            >
               <Download size={16} /> Opportunities
             </button>
           </div>
@@ -2401,12 +2445,22 @@ function DataView({
             />
           </label>
           <div className="data-actions">
-            <button disabled={dataBusy || contactCsv.trim().length === 0} onClick={onPreview}>
+            <button
+              disabled={
+                dataBusy || !dataPermissions.canImportContacts || contactCsv.trim().length === 0
+              }
+              onClick={onPreview}
+            >
               <Search size={16} /> Preview
             </button>
             <button
               className="primary-action"
-              disabled={dataBusy || !importPreview || importPreview.errors.length > 0}
+              disabled={
+                dataBusy ||
+                !dataPermissions.canImportContacts ||
+                !importPreview ||
+                importPreview.errors.length > 0
+              }
               onClick={onImport}
             >
               <Upload size={16} /> Import
@@ -4483,6 +4537,47 @@ function activityPayloadSummary(activity: CRMActivity) {
   }
 
   return details.join(" / ");
+}
+
+function canSessionAccess(
+  session: SessionResponse | null,
+  resource: PermissionResource,
+  action: PermissionAction,
+  fallback: boolean
+) {
+  if (fallback) {
+    return true;
+  }
+
+  if (!session) {
+    return false;
+  }
+
+  if (
+    session.user.permissions.some(
+      (permission) => permission.resource === "admin" && permission.action === "manage"
+    )
+  ) {
+    return true;
+  }
+
+  return session.user.permissions.some(
+    (permission) =>
+      permission.resource === resource &&
+      (permission.action === action || permission.action === "manage") &&
+      (permission.condition === "tenant" || permission.condition === "all")
+  );
+}
+
+function canExportEntity(permissions: DataPermissions, entity: ExportEntity) {
+  switch (entity) {
+    case "accounts":
+      return permissions.canExportAccounts;
+    case "contacts":
+      return permissions.canExportContacts;
+    case "opportunities":
+      return permissions.canExportOpportunities;
+  }
 }
 
 function errorSummary(error: unknown) {

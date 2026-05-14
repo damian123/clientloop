@@ -79,6 +79,38 @@ export const customFieldTypeSchema = z.enum([
   "account_ref"
 ]);
 
+export const permissionResourceSchema = z.enum([
+  "account",
+  "contact",
+  "lead",
+  "opportunity",
+  "activity",
+  "task",
+  "note",
+  "custom_field",
+  "user",
+  "admin"
+]);
+
+export const permissionActionSchema = z.enum([
+  "read",
+  "create",
+  "update",
+  "delete",
+  "assign",
+  "export",
+  "manage"
+]);
+
+export const permissionConditionSchema = z.enum(["own", "team", "tenant", "all"]);
+
+export const permissionSchema = z.object({
+  id: idSchema,
+  resource: permissionResourceSchema,
+  action: permissionActionSchema,
+  condition: permissionConditionSchema.optional()
+});
+
 export const pageInfoSchema = z.object({
   endCursor: z.string().optional(),
   hasNextPage: z.boolean()

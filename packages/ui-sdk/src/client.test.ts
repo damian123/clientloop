@@ -15,7 +15,15 @@ describe("CRMClient session support", () => {
           user: {
             id: seedManagerId,
             email: "morgan.manager@clientloop.test",
-            displayName: "Morgan Manager"
+            displayName: "Morgan Manager",
+            permissions: [
+              {
+                id: "perm-contact-create",
+                resource: "contact",
+                action: "create",
+                condition: "tenant"
+              }
+            ]
           },
           csrfToken: "csrf-token"
         });

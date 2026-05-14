@@ -13,6 +13,7 @@ import {
   opportunitySchema,
   opportunityStageSchema,
   pageSchema,
+  permissionSchema,
   recordEntityTypeSchema,
   taskSchema,
   webhookEventTypeSchema,
@@ -184,7 +185,8 @@ export const devLoginSchema = z.object({
 export const sessionUserSchema = z.object({
   id: idSchema,
   email: z.string().email(),
-  displayName: z.string()
+  displayName: z.string(),
+  permissions: z.array(permissionSchema)
 });
 
 export const sessionResponseSchema = z.object({

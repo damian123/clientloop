@@ -21,7 +21,8 @@ export async function registerSessionRoutes(app: FastifyInstance, repository: CR
       user: {
         id: principal.user.id,
         email: principal.user.email,
-        displayName: principal.user.displayName
+        displayName: principal.user.displayName,
+        permissions: principal.roles.flatMap((role) => role.permissions)
       }
     };
 
@@ -54,7 +55,8 @@ export async function registerSessionRoutes(app: FastifyInstance, repository: CR
       user: {
         id: principal.user.id,
         email: principal.user.email,
-        displayName: principal.user.displayName
+        displayName: principal.user.displayName,
+        permissions: principal.roles.flatMap((role) => role.permissions)
       },
       csrfToken: csrfTokenForSessionToken(sessionToken)
     } satisfies SessionResponse);

@@ -30,6 +30,7 @@ describe("CRM API sessions", () => {
     expect(sessionResponse.statusCode).toBe(200);
     expect(sessionResponse.json().tenantId).toBe(seedTenantId);
     expect(sessionResponse.json().user.id).toBe(seedUserId);
+    expect(sessionResponse.json().user.permissions.length).toBeGreaterThan(0);
     expect(sessionResponse.json().csrfToken).toBe(loginResponse.json().csrfToken);
 
     await app.close();
