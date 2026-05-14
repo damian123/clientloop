@@ -1,9 +1,26 @@
 import { expect, test } from "@playwright/test";
-import { seedManagerId, seedTenantId } from "@clientloop/domain";
+import { seedManagerId, seedTenantId, seedUserId } from "@clientloop/domain";
 
 const ownedAccountPath =
   "/?view=accounts&record=account%3A00000000-0000-4000-8000-000000001001";
 const apiBaseUrl = "http://127.0.0.1:4100";
+
+const noCreateSession = {
+  authenticated: true,
+  tenantId: seedTenantId,
+  user: {
+    id: seedUserId,
+    email: "alex.rep@clientloop.test",
+    displayName: "Alex Rep",
+    permissions: [
+      { id: "e2e-account-read", resource: "account", action: "read", condition: "tenant" },
+      { id: "e2e-contact-read", resource: "contact", action: "read", condition: "tenant" },
+      { id: "e2e-lead-read", resource: "lead", action: "read", condition: "tenant" },
+      { id: "e2e-opportunity-read", resource: "opportunity", action: "read", condition: "tenant" }
+    ]
+  },
+  csrfToken: "e2e-csrf-token"
+};
 
 test("sales rep can edit custom fields on owned account records", async ({ page }) => {
   await page.goto(ownedAccountPath);
@@ -47,4 +64,28 @@ test("sales rep cannot edit custom fields on manager-owned account records", asy
 
   await expect(page.getByRole("spinbutton", { name: "Health score" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Save fields" })).toBeDisabled();
+});
+
+test("sales rep create permissions enable contextual New in create-capable views", async ({ page }) => {
+  for (const view of ["pipeline", "leads", "accounts", "contacts"]) {
+    await page.goto(`/?view=${view}`);
+    await expect(page.getByText("Alex Rep")).toBeVisible();
+    await expect(page.getByRole("button", { name: "New", exact: true })).toBeEnabled();
+  }
+
+  await page.goto("/?view=data");
+  await expect(page.getByText("Alex Rep")).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeDisabled();
+});
+
+test("contextual New is disabled when the session lacks create permissions", async ({ page }) => {
+  await page.route(`${apiBaseUrl}/v1/session`, async (route) => {
+    await route.fulfill({ json: noCreateSession });
+  });
+
+  await page.goto("/?view=pipeline");
+
+  await expect(page.getByText("Alex Rep")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New", exact: true })).toBeDisabled();
 });
