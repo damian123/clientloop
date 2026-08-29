@@ -2,6 +2,10 @@ import type {
   AccessPrincipal,
   Account,
   Activity,
+  Conference,
+  ConferenceCompany,
+  ConferenceMeeting,
+  ConferencePerson,
   Contact,
   CustomFieldDefinition,
   Lead,
@@ -16,6 +20,10 @@ import type {
 import type {
   AppendNoteInput,
   ConvertLeadInput,
+  CreateConferenceCompanyInput,
+  CreateConferenceInput,
+  CreateConferenceMeetingInput,
+  CreateConferencePersonInput,
   CreateActivityInput,
   CreateAccountInput,
   CreateContactInput,
@@ -31,6 +39,11 @@ import type {
   ListQuery,
   SearchQuery,
   SearchResult,
+  ScoreConferencePersonInput,
+  UpdateConferenceCompanyInput,
+  UpdateConferenceInput,
+  UpdateConferenceMeetingInput,
+  UpdateConferencePersonInput,
   UpdateCustomFieldValuesInput,
   UpdateActivityInput,
   UpdateNoteInput,
@@ -69,6 +82,63 @@ export interface CRMRepository {
     body: UpdateOpportunityInput;
     idempotencyKey?: string | undefined;
   }): Promise<Opportunity>;
+  listConferences(tenantId: TenantId, query: ListQuery): Promise<Page<Conference>>;
+  createConference(principal: AccessPrincipal, input: CreateConferenceInput): Promise<Conference>;
+  updateConference(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceInput;
+  }): Promise<Conference>;
+  listConferenceCompanies(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferenceCompany>>;
+  createConferenceCompany(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferenceCompanyInput
+  ): Promise<ConferenceCompany>;
+  updateConferenceCompany(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceCompanyInput;
+  }): Promise<ConferenceCompany>;
+  listConferencePeople(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferencePerson>>;
+  createConferencePerson(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferencePersonInput
+  ): Promise<ConferencePerson>;
+  updateConferencePerson(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferencePersonInput;
+  }): Promise<ConferencePerson>;
+  scoreConferencePerson(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: ScoreConferencePersonInput;
+  }): Promise<ConferencePerson>;
+  listConferenceMeetings(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferenceMeeting>>;
+  createConferenceMeeting(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferenceMeetingInput
+  ): Promise<ConferenceMeeting>;
+  updateConferenceMeeting(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceMeetingInput;
+  }): Promise<ConferenceMeeting>;
   listTasks(tenantId: TenantId, query: ListQuery): Promise<Page<Task>>;
   createTask(principal: AccessPrincipal, input: CreateTaskInput): Promise<Task>;
   updateTask(input: {

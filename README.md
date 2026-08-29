@@ -2,6 +2,8 @@
 
 ClientLoop is a TypeScript modular-monolith CRM scaffold with shared domain contracts, a REST API, an outbox-ready async layer, PostgreSQL schema, and a Next.js web UI.
 
+> **Portfolio boundary:** This is a synthetic engineering scaffold for demonstrating CRM architecture and control design. The checked-in seed data is fictional. It is not a hosted service, a production-ready CRM, or a source of real prospect or customer data. Before production use, replace development authentication, complete a threat model and privacy review, configure managed secrets and durable infrastructure, and add operational monitoring, backup, recovery, and retention controls.
+
 ## What is implemented
 
 - Shared `@clientloop/domain` package for CRM entities, permissions, custom fields, domain events, and business rules.
@@ -123,6 +125,30 @@ curl -X POST http://localhost:4000/v1/imports/contacts/preview \
 
 The web app includes a `Data` view for CSV export plus account, contact, and opportunity import preview and commit.
 
+### LinkedIn prospect live-signal handoffs
+
+LinkedIn prospect imports use PostgreSQL as the source of truth and write generated handoff files under `outputs/linkedin-prospect-briefs`.
+
+Import a researched CSV batch:
+
+```bash
+npm run crm:import-linkedin-prospects -- outputs/linkedin-prospect-imports/live-signals-2026-05-20.csv --batch live-signals-2026-05-20
+```
+
+Regenerate the standard account, lead, and follow-up Markdown briefs:
+
+```bash
+npm run crm:export-linkedin-briefs
+```
+
+Regenerate the live-signal operational handoff for a batch:
+
+```bash
+npm run crm:export-live-signal-handoff -- --batch live-signals-2026-05-20
+```
+
+The live-signal handoff command initializes missing review outcome fields, links batch-level tasks to the generated files, and writes the ranked queue, connection-note pack, outcome tracker, batch-task summary, and top-level handoff index. Start with `outputs/linkedin-prospect-briefs/<batch>-handoff.md`.
+
 ## Verify
 
 ```bash
@@ -134,7 +160,11 @@ npm run build
 
 ## CI
 
-A GitHub Actions workflow template is stored at `docs/ci/github-actions-ci.yml`. It runs typecheck, unit/API tests, Playwright e2e tests, and the production build. Move it to `.github/workflows/ci.yml` after pushing with a GitHub token that includes the `workflow` scope.
+`.github/workflows/ci.yml` audits production dependencies, then runs type checks, unit/API tests, Playwright end-to-end tests, and the production build on pull requests and pushes to `main`.
+
+## License
+
+[MIT](LICENSE)
 
 ## Architecture
 

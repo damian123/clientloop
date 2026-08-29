@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { seedManagerId, seedTenantId } from "@clientloop/domain";
 
-const apiBaseUrl = "http://127.0.0.1:4100";
+const apiBaseUrl = `http://127.0.0.1:${process.env.CLIENTLOOP_E2E_API_PORT ?? 4100}`;
 
 test("manager can export contacts and import core record CSVs", async ({ page }) => {
   const suffix = Date.now();

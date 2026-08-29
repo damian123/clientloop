@@ -2,17 +2,24 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import {
   assertCan,
+  assertConferenceEmailLawfulBasis,
+  assertConferenceOutreachAllowed,
   assertValidCustomFieldDefinition,
   changeOpportunityStage,
   completeTask as completeTaskRule,
   convertLead as convertLeadRule,
   createAuditFields,
   normalizeCustomFieldKey,
+  scoreConferenceProspect,
   targetFromRecord,
   validateCustomFieldPatch,
   type AccessPrincipal,
   type Account,
   type Activity,
+  type Conference,
+  type ConferenceCompany,
+  type ConferenceMeeting,
+  type ConferencePerson,
   type Contact,
   type CRMEntityType,
   type CustomFieldDefinition,
@@ -39,6 +46,10 @@ import type {
   ConvertLeadInput,
   CreateActivityInput,
   CreateAccountInput,
+  CreateConferenceCompanyInput,
+  CreateConferenceInput,
+  CreateConferenceMeetingInput,
+  CreateConferencePersonInput,
   CreateContactInput,
   CreateCustomFieldDefinitionInput,
   CreateLeadInput,
@@ -52,7 +63,12 @@ import type {
   ListQuery,
   SearchQuery,
   SearchResult,
+  ScoreConferencePersonInput,
   UpdateActivityInput,
+  UpdateConferenceCompanyInput,
+  UpdateConferenceInput,
+  UpdateConferenceMeetingInput,
+  UpdateConferencePersonInput,
   UpdateCustomFieldValuesInput,
   UpdateNoteInput,
   UpdateOpportunityInput,
@@ -141,6 +157,10 @@ export class PrismaCRMRepository implements CRMRepository {
       contacts,
       leads,
       opportunities,
+      conferences,
+      conferenceCompanies,
+      conferencePeople,
+      conferenceMeetings,
       tasks,
       notes,
       activities,
@@ -161,6 +181,22 @@ export class PrismaCRMRepository implements CRMRepository {
       this.prisma.opportunity.findMany({
         where: { tenantId, archivedAt: null },
         orderBy: { updatedAt: "desc" }
+      }),
+      this.prisma.conference.findMany({
+        where: { tenantId, archivedAt: null },
+        orderBy: [{ startDate: "asc" }, { updatedAt: "desc" }]
+      }),
+      this.prisma.conferenceCompany.findMany({
+        where: { tenantId, archivedAt: null },
+        orderBy: [{ company: "asc" }]
+      }),
+      this.prisma.conferencePerson.findMany({
+        where: { tenantId, archivedAt: null },
+        orderBy: [{ totalScore: "desc" }, { updatedAt: "desc" }]
+      }),
+      this.prisma.conferenceMeeting.findMany({
+        where: { tenantId, archivedAt: null },
+        orderBy: [{ updatedAt: "desc" }]
       }),
       this.prisma.task.findMany({
         where: { tenantId, archivedAt: null },
@@ -185,6 +221,14 @@ export class PrismaCRMRepository implements CRMRepository {
       contacts: contacts.map((contact) => this.toContact(contact)),
       leads: leads.map((lead) => this.toLead(lead)),
       opportunities: opportunities.map((opportunity) => this.toOpportunity(opportunity)),
+      conferences: conferences.map((conference) => this.toConference(conference)),
+      conferenceCompanies: conferenceCompanies.map((company) =>
+        this.toConferenceCompany(company)
+      ),
+      conferencePeople: conferencePeople.map((person) => this.toConferencePerson(person)),
+      conferenceMeetings: conferenceMeetings.map((meeting) =>
+        this.toConferenceMeeting(meeting)
+      ),
       tasks: tasks.map((task) => this.toTask(task)),
       notes: notes.map((note) => this.toNote(note)),
       activities: activities.map((activity) => this.toActivity(activity)),
@@ -741,6 +785,638 @@ export class PrismaCRMRepository implements CRMRepository {
     });
   }
 
+  async listConferences(tenantId: TenantId, query: ListQuery): Promise<Page<Conference>> {
+    const items = await this.prisma.conference.findMany({
+      where: {
+        tenantId,
+        archivedAt: null,
+        ...(query.q
+          ? {
+              OR: [
+                { name: { contains: query.q, mode: "insensitive" as const } },
+                { location: { contains: query.q, mode: "insensitive" as const } },
+                { audienceType: { contains: query.q, mode: "insensitive" as const } }
+              ]
+            }
+          : {})
+      },
+      orderBy: [{ startDate: "asc" }, { updatedAt: "desc" }],
+      take: query.limit
+    });
+
+    return this.page(items.map((item) => this.toConference(item)), query.limit);
+  }
+
+  async createConference(
+    principal: AccessPrincipal,
+    input: CreateConferenceInput
+  ): Promise<Conference> {
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    const now = new Date();
+    const audit = createAuditFields({
+      tenantId: principal.tenantId,
+      actorUserId: principal.user.id,
+      now: now.toISOString()
+    });
+
+    const conference = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.conference.create({
+        data: {
+          id: randomUUID(),
+          tenantId: audit.tenantId,
+          name: input.name,
+          startDate: this.dateFromDateOnly(input.startDate),
+          endDate: input.endDate ? this.dateFromDateOnly(input.endDate) : null,
+          location: input.location ?? null,
+          website: input.website ?? null,
+          audienceType: input.audienceType ?? null,
+          organizerContact: input.organizerContact ?? null,
+          sponsorPackageLink: input.sponsorPackageLink ?? null,
+          appName: input.appName ?? null,
+          attendeeAccessStatus: input.attendeeAccessStatus,
+          sourceNotes: input.sourceNotes ?? null,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: audit.createdBy,
+          updatedBy: audit.updatedBy,
+          version: audit.version
+        }
+      });
+      await this.enqueueEvent(tx, "conference.created", "conference", created.id, principal, now, {
+        name: created.name
+      });
+      return created;
+    });
+
+    return this.toConference(conference);
+  }
+
+  async updateConference(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceInput;
+  }): Promise<Conference> {
+    return this.prisma.$transaction(async (tx) => {
+      const currentRecord = await tx.conference.findFirst({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          archivedAt: null
+        }
+      });
+
+      if (!currentRecord) {
+        throw new Error("Conference not found");
+      }
+
+      const current = this.toConference(currentRecord);
+      assertCan(input.principal, "conference", "update", targetFromRecord(current));
+      const now = new Date();
+      const nextVersion = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+      const result = await tx.conference.updateMany({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          version: input.body.expectedVersion,
+          archivedAt: null
+        },
+        data: {
+          name: input.body.name ?? current.name,
+          startDate: input.body.startDate
+            ? this.dateFromDateOnly(input.body.startDate)
+            : this.dateFromDateOnly(current.startDate),
+          endDate:
+            input.body.endDate === undefined
+              ? current.endDate
+                ? this.dateFromDateOnly(current.endDate)
+                : null
+              : input.body.endDate
+                ? this.dateFromDateOnly(input.body.endDate)
+                : null,
+          location: input.body.location === undefined ? current.location ?? null : input.body.location,
+          website: input.body.website === undefined ? current.website ?? null : input.body.website,
+          audienceType:
+            input.body.audienceType === undefined
+              ? current.audienceType ?? null
+              : input.body.audienceType,
+          organizerContact:
+            input.body.organizerContact === undefined
+              ? current.organizerContact ?? null
+              : input.body.organizerContact,
+          sponsorPackageLink:
+            input.body.sponsorPackageLink === undefined
+              ? current.sponsorPackageLink ?? null
+              : input.body.sponsorPackageLink,
+          appName: input.body.appName === undefined ? current.appName ?? null : input.body.appName,
+          attendeeAccessStatus: input.body.attendeeAccessStatus ?? current.attendeeAccessStatus,
+          sourceNotes:
+            input.body.sourceNotes === undefined ? current.sourceNotes ?? null : input.body.sourceNotes,
+          updatedAt: now,
+          updatedBy: input.principal.user.id,
+          version: nextVersion
+        }
+      });
+
+      if (result.count !== 1) {
+        throw new Error("Version conflict");
+      }
+
+      const persisted = await tx.conference.findUniqueOrThrow({ where: { id: input.id } });
+      const response = this.toConference(persisted);
+      await this.enqueueEvent(tx, "conference.updated", "conference", response.id, input.principal, now, {
+        version: response.version
+      });
+      return response;
+    });
+  }
+
+  async listConferenceCompanies(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferenceCompany>> {
+    const items = await this.prisma.conferenceCompany.findMany({
+      where: {
+        tenantId,
+        conferenceId,
+        archivedAt: null,
+        ...(query.q
+          ? {
+              OR: [
+                { company: { contains: query.q, mode: "insensitive" as const } },
+                { website: { contains: query.q, mode: "insensitive" as const } },
+                { sector: { contains: query.q, mode: "insensitive" as const } },
+                { sourceUrl: { contains: query.q, mode: "insensitive" as const } }
+              ]
+            }
+          : {})
+      },
+      orderBy: [{ companyScore: "desc" }, { company: "asc" }],
+      take: query.limit
+    });
+
+    return this.page(items.map((item) => this.toConferenceCompany(item)), query.limit);
+  }
+
+  async createConferenceCompany(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferenceCompanyInput
+  ): Promise<ConferenceCompany> {
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    const now = new Date();
+    const audit = createAuditFields({
+      tenantId: principal.tenantId,
+      actorUserId: principal.user.id,
+      now: now.toISOString()
+    });
+
+    await this.assertConferenceExists(principal.tenantId, conferenceId);
+    const company = await this.prisma.conferenceCompany.create({
+      data: {
+        id: randomUUID(),
+        tenantId: audit.tenantId,
+        conferenceId,
+        accountId: input.accountId ?? null,
+        company: input.company,
+        website: input.website ?? null,
+        conferenceRole: input.conferenceRole,
+        sector: input.sector ?? null,
+        rwaRelevance: input.rwaRelevance,
+        privateMarketsRelevance: input.privateMarketsRelevance,
+        fundraisingRelevance: input.fundraisingRelevance,
+        marketEntryRelevance: input.marketEntryRelevance,
+        partnershipRelevance: input.partnershipRelevance,
+        companyScore: input.companyScore,
+        sourceUrl: input.sourceUrl ?? null,
+        sourceNotes: input.sourceNotes ?? null,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: audit.createdBy,
+        updatedBy: audit.updatedBy,
+        version: audit.version
+      }
+    });
+
+    return this.toConferenceCompany(company);
+  }
+
+  async updateConferenceCompany(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceCompanyInput;
+  }): Promise<ConferenceCompany> {
+    const currentRecord = await this.prisma.conferenceCompany.findFirst({
+      where: { id: input.id, tenantId: input.principal.tenantId, archivedAt: null }
+    });
+
+    if (!currentRecord) {
+      throw new Error("Conference company not found");
+    }
+
+    const current = this.toConferenceCompany(currentRecord);
+    assertCan(input.principal, "conference", "update", targetFromRecord(current));
+    const now = new Date();
+    const nextVersion = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+    const result = await this.prisma.conferenceCompany.updateMany({
+      where: {
+        id: input.id,
+        tenantId: input.principal.tenantId,
+        version: input.body.expectedVersion,
+        archivedAt: null
+      },
+      data: {
+        accountId: input.body.accountId === undefined ? current.accountId ?? null : input.body.accountId,
+        company: input.body.company ?? current.company,
+        website: input.body.website === undefined ? current.website ?? null : input.body.website,
+        conferenceRole: input.body.conferenceRole ?? current.conferenceRole,
+        sector: input.body.sector === undefined ? current.sector ?? null : input.body.sector,
+        rwaRelevance: input.body.rwaRelevance ?? current.rwaRelevance,
+        privateMarketsRelevance:
+          input.body.privateMarketsRelevance ?? current.privateMarketsRelevance,
+        fundraisingRelevance: input.body.fundraisingRelevance ?? current.fundraisingRelevance,
+        marketEntryRelevance: input.body.marketEntryRelevance ?? current.marketEntryRelevance,
+        partnershipRelevance: input.body.partnershipRelevance ?? current.partnershipRelevance,
+        companyScore: input.body.companyScore ?? current.companyScore,
+        sourceUrl: input.body.sourceUrl === undefined ? current.sourceUrl ?? null : input.body.sourceUrl,
+        sourceNotes:
+          input.body.sourceNotes === undefined ? current.sourceNotes ?? null : input.body.sourceNotes,
+        updatedAt: now,
+        updatedBy: input.principal.user.id,
+        version: nextVersion
+      }
+    });
+
+    if (result.count !== 1) {
+      throw new Error("Version conflict");
+    }
+
+    return this.toConferenceCompany(
+      await this.prisma.conferenceCompany.findUniqueOrThrow({ where: { id: input.id } })
+    );
+  }
+
+  async listConferencePeople(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferencePerson>> {
+    const items = await this.prisma.conferencePerson.findMany({
+      where: {
+        tenantId,
+        conferenceId,
+        archivedAt: null,
+        ...(query.q
+          ? {
+              OR: [
+                { name: { contains: query.q, mode: "insensitive" as const } },
+                { title: { contains: query.q, mode: "insensitive" as const } },
+                { conferenceSignal: { contains: query.q, mode: "insensitive" as const } },
+                { buyingSignal: { contains: query.q, mode: "insensitive" as const } },
+                { relationshipPath: { contains: query.q, mode: "insensitive" as const } },
+                { source: { contains: query.q, mode: "insensitive" as const } }
+              ]
+            }
+          : {})
+      },
+      orderBy: [{ totalScore: "desc" }, { updatedAt: "desc" }],
+      take: query.limit
+    });
+
+    return this.page(items.map((item) => this.toConferencePerson(item)), query.limit);
+  }
+
+  async createConferencePerson(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferencePersonInput
+  ): Promise<ConferencePerson> {
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    await this.assertConferenceExists(principal.tenantId, conferenceId);
+    assertConferenceEmailLawfulBasis(input);
+    assertConferenceOutreachAllowed(input);
+    const score = scoreConferenceProspect(input);
+    const now = new Date();
+    const audit = createAuditFields({
+      tenantId: principal.tenantId,
+      actorUserId: principal.user.id,
+      now: now.toISOString()
+    });
+
+    const person = await this.prisma.conferencePerson.create({
+      data: {
+        id: randomUUID(),
+        tenantId: audit.tenantId,
+        conferenceId,
+        conferenceCompanyId: input.conferenceCompanyId ?? null,
+        accountId: input.accountId ?? null,
+        contactId: input.contactId ?? null,
+        name: input.name,
+        title: input.title,
+        linkedIn: input.linkedIn ?? null,
+        email: input.email ?? null,
+        conferenceSignal: input.conferenceSignal ?? null,
+        icpCategory: input.icpCategory,
+        buyingSignal: input.buyingSignal ?? null,
+        relationshipPath: input.relationshipPath ?? null,
+        outreachStatus: input.outreachStatus,
+        sourceType: input.sourceType,
+        source: input.source ?? null,
+        lawfulBasisNotes: input.lawfulBasisNotes ?? null,
+        optOutStatus: input.optOutStatus,
+        seniorityScore: score.seniorityScore,
+        companyFitScore: score.companyFitScore,
+        signalScore: score.signalScore,
+        conferenceSignalScore: score.conferenceSignalScore,
+        warmIntroScore: score.warmIntroScore,
+        timingScore: score.timingScore,
+        totalScore: score.totalScore,
+        priorityBand: score.priorityBand,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: audit.createdBy,
+        updatedBy: audit.updatedBy,
+        version: audit.version
+      }
+    });
+
+    return this.toConferencePerson(person);
+  }
+
+  async updateConferencePerson(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferencePersonInput;
+  }): Promise<ConferencePerson> {
+    const currentRecord = await this.prisma.conferencePerson.findFirst({
+      where: { id: input.id, tenantId: input.principal.tenantId, archivedAt: null }
+    });
+
+    if (!currentRecord) {
+      throw new Error("Conference person not found");
+    }
+
+    const current = this.toConferencePerson(currentRecord);
+    assertCan(input.principal, "conference", "update", targetFromRecord(current));
+    const score = scoreConferenceProspect({
+      seniorityScore: input.body.seniorityScore ?? current.seniorityScore,
+      companyFitScore: input.body.companyFitScore ?? current.companyFitScore,
+      signalScore: input.body.signalScore ?? current.signalScore,
+      conferenceSignalScore:
+        input.body.conferenceSignalScore ?? current.conferenceSignalScore,
+      warmIntroScore: input.body.warmIntroScore ?? current.warmIntroScore,
+      timingScore: input.body.timingScore ?? current.timingScore
+    });
+    const updatedCandidate: ConferencePerson = {
+      ...current,
+      conferenceCompanyId:
+        input.body.conferenceCompanyId === undefined
+          ? current.conferenceCompanyId
+          : input.body.conferenceCompanyId,
+      accountId: input.body.accountId === undefined ? current.accountId : input.body.accountId,
+      contactId: input.body.contactId === undefined ? current.contactId : input.body.contactId,
+      name: input.body.name ?? current.name,
+      title: input.body.title ?? current.title,
+      linkedIn: input.body.linkedIn === undefined ? current.linkedIn : input.body.linkedIn,
+      email: input.body.email === undefined ? current.email : input.body.email,
+      conferenceSignal:
+        input.body.conferenceSignal === undefined
+          ? current.conferenceSignal
+          : input.body.conferenceSignal,
+      icpCategory: input.body.icpCategory ?? current.icpCategory,
+      buyingSignal:
+        input.body.buyingSignal === undefined ? current.buyingSignal : input.body.buyingSignal,
+      relationshipPath:
+        input.body.relationshipPath === undefined
+          ? current.relationshipPath
+          : input.body.relationshipPath,
+      outreachStatus: input.body.outreachStatus ?? current.outreachStatus,
+      sourceType: input.body.sourceType ?? current.sourceType,
+      source: input.body.source === undefined ? current.source : input.body.source,
+      lawfulBasisNotes:
+        input.body.lawfulBasisNotes === undefined
+          ? current.lawfulBasisNotes
+          : input.body.lawfulBasisNotes,
+      optOutStatus: input.body.optOutStatus ?? current.optOutStatus,
+      ...score
+    };
+    assertConferenceEmailLawfulBasis(updatedCandidate);
+    assertConferenceOutreachAllowed(updatedCandidate);
+
+    const now = new Date();
+    const nextVersion = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+    const result = await this.prisma.conferencePerson.updateMany({
+      where: {
+        id: input.id,
+        tenantId: input.principal.tenantId,
+        version: input.body.expectedVersion,
+        archivedAt: null
+      },
+      data: {
+        conferenceCompanyId: updatedCandidate.conferenceCompanyId ?? null,
+        accountId: updatedCandidate.accountId ?? null,
+        contactId: updatedCandidate.contactId ?? null,
+        name: updatedCandidate.name,
+        title: updatedCandidate.title,
+        linkedIn: updatedCandidate.linkedIn ?? null,
+        email: updatedCandidate.email ?? null,
+        conferenceSignal: updatedCandidate.conferenceSignal ?? null,
+        icpCategory: updatedCandidate.icpCategory,
+        buyingSignal: updatedCandidate.buyingSignal ?? null,
+        relationshipPath: updatedCandidate.relationshipPath ?? null,
+        outreachStatus: updatedCandidate.outreachStatus,
+        sourceType: updatedCandidate.sourceType,
+        source: updatedCandidate.source ?? null,
+        lawfulBasisNotes: updatedCandidate.lawfulBasisNotes ?? null,
+        optOutStatus: updatedCandidate.optOutStatus,
+        seniorityScore: updatedCandidate.seniorityScore,
+        companyFitScore: updatedCandidate.companyFitScore,
+        signalScore: updatedCandidate.signalScore,
+        conferenceSignalScore: updatedCandidate.conferenceSignalScore,
+        warmIntroScore: updatedCandidate.warmIntroScore,
+        timingScore: updatedCandidate.timingScore,
+        totalScore: updatedCandidate.totalScore,
+        priorityBand: updatedCandidate.priorityBand,
+        updatedAt: now,
+        updatedBy: input.principal.user.id,
+        version: nextVersion
+      }
+    });
+
+    if (result.count !== 1) {
+      throw new Error("Version conflict");
+    }
+
+    return this.toConferencePerson(
+      await this.prisma.conferencePerson.findUniqueOrThrow({ where: { id: input.id } })
+    );
+  }
+
+  async scoreConferencePerson(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: ScoreConferencePersonInput;
+  }): Promise<ConferencePerson> {
+    const person = await this.updateConferencePerson({
+      principal: input.principal,
+      id: input.id,
+      body: {
+        expectedVersion: input.body.expectedVersion,
+        seniorityScore: input.body.seniorityScore,
+        companyFitScore: input.body.companyFitScore,
+        signalScore: input.body.signalScore,
+        conferenceSignalScore: input.body.conferenceSignalScore,
+        warmIntroScore: input.body.warmIntroScore,
+        timingScore: input.body.timingScore
+      }
+    });
+    await this.enqueueEvent(
+      this.prisma,
+      "conference_person.scored",
+      "conference_person",
+      person.id,
+      input.principal,
+      new Date(person.updatedAt),
+      {
+        totalScore: person.totalScore,
+        priorityBand: person.priorityBand,
+        scoreNotes: input.body.scoreNotes ?? null
+      }
+    );
+    return person;
+  }
+
+  async listConferenceMeetings(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferenceMeeting>> {
+    const items = await this.prisma.conferenceMeeting.findMany({
+      where: {
+        tenantId,
+        conferenceId,
+        archivedAt: null,
+        ...(query.q
+          ? {
+              OR: [
+                { reasonToMeet: { contains: query.q, mode: "insensitive" as const } },
+                { proposedAsk: { contains: query.q, mode: "insensitive" as const } },
+                { introPath: { contains: query.q, mode: "insensitive" as const } },
+                { notes: { contains: query.q, mode: "insensitive" as const } },
+                { nextStep: { contains: query.q, mode: "insensitive" as const } }
+              ]
+            }
+          : {})
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: query.limit
+    });
+
+    return this.page(items.map((item) => this.toConferenceMeeting(item)), query.limit);
+  }
+
+  async createConferenceMeeting(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferenceMeetingInput
+  ): Promise<ConferenceMeeting> {
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    const person = await this.findConferencePerson(principal.tenantId, input.conferencePersonId);
+    if (person.conferenceId !== conferenceId) {
+      throw new Error("Conference person not found");
+    }
+    this.assertMeetingAllowed(person, input.status);
+    const now = new Date();
+    const audit = createAuditFields({
+      tenantId: principal.tenantId,
+      actorUserId: principal.user.id,
+      now: now.toISOString()
+    });
+
+    const meeting = await this.prisma.conferenceMeeting.create({
+      data: {
+        id: randomUUID(),
+        tenantId: audit.tenantId,
+        conferenceId,
+        conferencePersonId: input.conferencePersonId,
+        reasonToMeet: input.reasonToMeet,
+        proposedAsk: input.proposedAsk ?? null,
+        introPath: input.introPath ?? null,
+        status: input.status,
+        notes: input.notes ?? null,
+        nextStep: input.nextStep ?? null,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: audit.createdBy,
+        updatedBy: audit.updatedBy,
+        version: audit.version
+      }
+    });
+
+    return this.toConferenceMeeting(meeting);
+  }
+
+  async updateConferenceMeeting(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceMeetingInput;
+  }): Promise<ConferenceMeeting> {
+    return this.prisma.$transaction(async (tx) => {
+      const currentRecord = await tx.conferenceMeeting.findFirst({
+        where: { id: input.id, tenantId: input.principal.tenantId, archivedAt: null }
+      });
+
+      if (!currentRecord) {
+        throw new Error("Conference meeting not found");
+      }
+
+      const current = this.toConferenceMeeting(currentRecord);
+      const person = await this.findConferencePerson(input.principal.tenantId, current.conferencePersonId);
+      assertCan(input.principal, "conference", "update", targetFromRecord(current));
+      this.assertMeetingAllowed(person, input.body.status ?? current.status);
+      const now = new Date();
+      const nextVersion = this.assertExpectedVersion(current, input.body.expectedVersion) + 1;
+      const result = await tx.conferenceMeeting.updateMany({
+        where: {
+          id: input.id,
+          tenantId: input.principal.tenantId,
+          version: input.body.expectedVersion,
+          archivedAt: null
+        },
+        data: {
+          reasonToMeet: input.body.reasonToMeet ?? current.reasonToMeet,
+          proposedAsk:
+            input.body.proposedAsk === undefined ? current.proposedAsk ?? null : input.body.proposedAsk,
+          introPath:
+            input.body.introPath === undefined ? current.introPath ?? null : input.body.introPath,
+          status: input.body.status ?? current.status,
+          notes: input.body.notes === undefined ? current.notes ?? null : input.body.notes,
+          nextStep: input.body.nextStep === undefined ? current.nextStep ?? null : input.body.nextStep,
+          updatedAt: now,
+          updatedBy: input.principal.user.id,
+          version: nextVersion
+        }
+      });
+
+      if (result.count !== 1) {
+        throw new Error("Version conflict");
+      }
+
+      const persisted = await tx.conferenceMeeting.findUniqueOrThrow({ where: { id: input.id } });
+      const response = this.toConferenceMeeting(persisted);
+      await this.enqueueEvent(
+        tx,
+        "conference_meeting.updated",
+        "conference_meeting",
+        response.id,
+        input.principal,
+        now,
+        { status: response.status, version: response.version }
+      );
+      return response;
+    });
+  }
+
   async listTasks(tenantId: TenantId, query: ListQuery): Promise<Page<Task>> {
     const items = await this.prisma.task.findMany({
       where: {
@@ -1264,7 +1940,8 @@ export class PrismaCRMRepository implements CRMRepository {
   }
 
   async search(tenantId: TenantId, query: SearchQuery): Promise<SearchResult[]> {
-    const [accounts, contacts, leads, opportunities] = await Promise.all([
+    const [accounts, contacts, leads, opportunities, conferences, conferenceCompanies, conferencePeople] =
+      await Promise.all([
       this.prisma.account.findMany({
         where: {
           tenantId,
@@ -1307,6 +1984,44 @@ export class PrismaCRMRepository implements CRMRepository {
           name: { contains: query.q, mode: "insensitive" }
         },
         take: query.limit
+      }),
+      this.prisma.conference.findMany({
+        where: {
+          tenantId,
+          archivedAt: null,
+          OR: [
+            { name: { contains: query.q, mode: "insensitive" } },
+            { location: { contains: query.q, mode: "insensitive" } },
+            { audienceType: { contains: query.q, mode: "insensitive" } }
+          ]
+        },
+        take: query.limit
+      }),
+      this.prisma.conferenceCompany.findMany({
+        where: {
+          tenantId,
+          archivedAt: null,
+          OR: [
+            { company: { contains: query.q, mode: "insensitive" } },
+            { sector: { contains: query.q, mode: "insensitive" } },
+            { sourceUrl: { contains: query.q, mode: "insensitive" } }
+          ]
+        },
+        take: query.limit
+      }),
+      this.prisma.conferencePerson.findMany({
+        where: {
+          tenantId,
+          archivedAt: null,
+          OR: [
+            { name: { contains: query.q, mode: "insensitive" } },
+            { title: { contains: query.q, mode: "insensitive" } },
+            { buyingSignal: { contains: query.q, mode: "insensitive" } },
+            { conferenceSignal: { contains: query.q, mode: "insensitive" } }
+          ]
+        },
+        orderBy: [{ totalScore: "desc" }],
+        take: query.limit
       })
     ]);
 
@@ -1334,6 +2049,24 @@ export class PrismaCRMRepository implements CRMRepository {
         id: opportunity.id,
         label: opportunity.name,
         description: opportunity.stage
+      })),
+      ...conferences.map((conference) => ({
+        type: "conference" as const,
+        id: conference.id,
+        label: conference.name,
+        description: conference.location ?? conference.audienceType ?? conference.attendeeAccessStatus
+      })),
+      ...conferenceCompanies.map((company) => ({
+        type: "conference_company" as const,
+        id: company.id,
+        label: company.company,
+        description: company.sector ?? company.conferenceRole
+      })),
+      ...conferencePeople.map((person) => ({
+        type: "conference_person" as const,
+        id: person.id,
+        label: person.name,
+        description: `${person.title} / ${person.priorityBand}`
       }))
     ].slice(0, query.limit);
   }
@@ -1695,6 +2428,120 @@ export class PrismaCRMRepository implements CRMRepository {
     };
   }
 
+  private toConference(conference: Prisma.ConferenceGetPayload<object>): Conference {
+    return {
+      id: conference.id,
+      tenantId: conference.tenantId,
+      name: conference.name,
+      startDate: this.dateOnly(conference.startDate) ?? conference.startDate.toISOString(),
+      endDate: this.dateOnly(conference.endDate),
+      location: conference.location,
+      website: conference.website,
+      audienceType: conference.audienceType,
+      organizerContact: conference.organizerContact,
+      sponsorPackageLink: conference.sponsorPackageLink,
+      appName: conference.appName,
+      attendeeAccessStatus: conference.attendeeAccessStatus,
+      sourceNotes: conference.sourceNotes,
+      createdAt: conference.createdAt.toISOString(),
+      updatedAt: conference.updatedAt.toISOString(),
+      createdBy: conference.createdBy,
+      updatedBy: conference.updatedBy,
+      version: conference.version,
+      archivedAt: conference.archivedAt?.toISOString()
+    };
+  }
+
+  private toConferenceCompany(
+    company: Prisma.ConferenceCompanyGetPayload<object>
+  ): ConferenceCompany {
+    return {
+      id: company.id,
+      tenantId: company.tenantId,
+      conferenceId: company.conferenceId,
+      accountId: company.accountId,
+      company: company.company,
+      website: company.website,
+      conferenceRole: company.conferenceRole,
+      sector: company.sector,
+      rwaRelevance: company.rwaRelevance,
+      privateMarketsRelevance: company.privateMarketsRelevance,
+      fundraisingRelevance: company.fundraisingRelevance,
+      marketEntryRelevance: company.marketEntryRelevance,
+      partnershipRelevance: company.partnershipRelevance,
+      companyScore: company.companyScore,
+      sourceUrl: company.sourceUrl,
+      sourceNotes: company.sourceNotes,
+      createdAt: company.createdAt.toISOString(),
+      updatedAt: company.updatedAt.toISOString(),
+      createdBy: company.createdBy,
+      updatedBy: company.updatedBy,
+      version: company.version,
+      archivedAt: company.archivedAt?.toISOString()
+    };
+  }
+
+  private toConferencePerson(person: Prisma.ConferencePersonGetPayload<object>): ConferencePerson {
+    return {
+      id: person.id,
+      tenantId: person.tenantId,
+      conferenceId: person.conferenceId,
+      conferenceCompanyId: person.conferenceCompanyId,
+      accountId: person.accountId,
+      contactId: person.contactId,
+      name: person.name,
+      title: person.title,
+      linkedIn: person.linkedIn,
+      email: person.email,
+      conferenceSignal: person.conferenceSignal,
+      icpCategory: person.icpCategory,
+      buyingSignal: person.buyingSignal,
+      relationshipPath: person.relationshipPath,
+      outreachStatus: person.outreachStatus,
+      sourceType: person.sourceType,
+      source: person.source,
+      lawfulBasisNotes: person.lawfulBasisNotes,
+      optOutStatus: person.optOutStatus,
+      seniorityScore: person.seniorityScore,
+      companyFitScore: person.companyFitScore,
+      signalScore: person.signalScore,
+      conferenceSignalScore: person.conferenceSignalScore,
+      warmIntroScore: person.warmIntroScore,
+      timingScore: person.timingScore,
+      totalScore: person.totalScore,
+      priorityBand: person.priorityBand,
+      createdAt: person.createdAt.toISOString(),
+      updatedAt: person.updatedAt.toISOString(),
+      createdBy: person.createdBy,
+      updatedBy: person.updatedBy,
+      version: person.version,
+      archivedAt: person.archivedAt?.toISOString()
+    };
+  }
+
+  private toConferenceMeeting(
+    meeting: Prisma.ConferenceMeetingGetPayload<object>
+  ): ConferenceMeeting {
+    return {
+      id: meeting.id,
+      tenantId: meeting.tenantId,
+      conferenceId: meeting.conferenceId,
+      conferencePersonId: meeting.conferencePersonId,
+      reasonToMeet: meeting.reasonToMeet,
+      proposedAsk: meeting.proposedAsk,
+      introPath: meeting.introPath,
+      status: meeting.status,
+      notes: meeting.notes,
+      nextStep: meeting.nextStep,
+      createdAt: meeting.createdAt.toISOString(),
+      updatedAt: meeting.updatedAt.toISOString(),
+      createdBy: meeting.createdBy,
+      updatedBy: meeting.updatedBy,
+      version: meeting.version,
+      archivedAt: meeting.archivedAt?.toISOString()
+    };
+  }
+
   private toTask(task: Prisma.TaskGetPayload<object>): Task {
     return {
       id: task.id,
@@ -1815,6 +2662,59 @@ export class PrismaCRMRepository implements CRMRepository {
       ...this.toWebhookSubscription(subscription),
       signingSecret: subscription.secretEncrypted
     };
+  }
+
+  private async assertConferenceExists(
+    tenantId: TenantId,
+    conferenceId: string
+  ): Promise<Conference> {
+    const conference = await this.prisma.conference.findFirst({
+      where: {
+        id: conferenceId,
+        tenantId,
+        archivedAt: null
+      }
+    });
+
+    if (!conference) {
+      throw new Error("Conference not found");
+    }
+
+    return this.toConference(conference);
+  }
+
+  private async findConferencePerson(
+    tenantId: TenantId,
+    personId: string
+  ): Promise<ConferencePerson> {
+    const person = await this.prisma.conferencePerson.findFirst({
+      where: {
+        id: personId,
+        tenantId,
+        archivedAt: null
+      }
+    });
+
+    if (!person) {
+      throw new Error("Conference person not found");
+    }
+
+    return this.toConferencePerson(person);
+  }
+
+  private assertMeetingAllowed(
+    person: ConferencePerson,
+    status: ConferenceMeeting["status"]
+  ): void {
+    assertConferenceOutreachAllowed({
+      optOutStatus: person.optOutStatus,
+      outreachStatus:
+        status === "requested"
+          ? "meeting_requested"
+          : status === "booked"
+            ? "meeting_booked"
+            : person.outreachStatus
+    });
   }
 
   private async createAccountForLeadConversion(

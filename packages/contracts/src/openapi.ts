@@ -94,6 +94,69 @@ export const openApiDocument = {
         }
       }
     },
+    "/v1/conferences": {
+      get: { summary: "List conferences" },
+      post: { summary: "Create conference prospecting workspace" }
+    },
+    "/v1/conferences/{id}": {
+      patch: {
+        summary: "Update conference with optimistic concurrency",
+        responses: {
+          "200": { description: "Updated" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    "/v1/conferences/{id}/companies": {
+      get: { summary: "List conference companies" },
+      post: { summary: "Create conference company prospect" }
+    },
+    "/v1/conference-companies/{id}": {
+      patch: {
+        summary: "Update conference company prospect",
+        responses: {
+          "200": { description: "Updated" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    "/v1/conferences/{id}/people": {
+      get: { summary: "List conference people prospects" },
+      post: { summary: "Create conference person prospect" }
+    },
+    "/v1/conference-people/{id}": {
+      patch: {
+        summary: "Update conference person prospect",
+        responses: {
+          "200": { description: "Updated" },
+          "400": { description: "Compliance validation failed" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    "/v1/conference-people/{id}/score": {
+      post: {
+        summary: "Score a conference person prospect",
+        responses: {
+          "200": { description: "Scored" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
+    "/v1/conferences/{id}/meetings": {
+      get: { summary: "List conference meetings" },
+      post: { summary: "Create conference meeting plan" }
+    },
+    "/v1/conference-meetings/{id}": {
+      patch: {
+        summary: "Update conference meeting plan",
+        responses: {
+          "200": { description: "Updated" },
+          "400": { description: "Opt out guardrail failed" },
+          "409": { description: "Version conflict" }
+        }
+      }
+    },
     "/v1/tasks": {
       get: { summary: "List tasks" },
       post: { summary: "Create task" }
@@ -246,6 +309,42 @@ export const openApiDocument = {
     "/v1/imports/opportunities": {
       post: {
         summary: "Import opportunities from CSV",
+        responses: {
+          "201": { description: "Imported" },
+          "400": { description: "CSV validation failed" }
+        }
+      }
+    },
+    "/v1/imports/conferences/{id}/companies/preview": {
+      post: { summary: "Preview conference company CSV import" }
+    },
+    "/v1/imports/conferences/{id}/companies": {
+      post: {
+        summary: "Import conference companies from CSV",
+        responses: {
+          "201": { description: "Imported" },
+          "400": { description: "CSV validation failed" }
+        }
+      }
+    },
+    "/v1/imports/conferences/{id}/people/preview": {
+      post: { summary: "Preview conference people CSV import" }
+    },
+    "/v1/imports/conferences/{id}/people": {
+      post: {
+        summary: "Import conference people from CSV",
+        responses: {
+          "201": { description: "Imported" },
+          "400": { description: "CSV validation failed" }
+        }
+      }
+    },
+    "/v1/imports/conferences/{id}/meetings/preview": {
+      post: { summary: "Preview conference meeting CSV import" }
+    },
+    "/v1/imports/conferences/{id}/meetings": {
+      post: {
+        summary: "Import conference meetings from CSV",
         responses: {
           "201": { description: "Imported" },
           "400": { description: "CSV validation failed" }

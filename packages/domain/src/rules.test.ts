@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { changeOpportunityStage, convertLead } from "./rules";
+import {
+  assertConferenceEmailLawfulBasis,
+  assertConferenceOutreachAllowed,
+  changeOpportunityStage,
+  convertLead,
+  scoreConferenceProspect
+} from "./rules";
 import { seedOpportunities, seedUserId } from "./seed";
 
 describe("opportunity rules", () => {
@@ -74,5 +80,51 @@ describe("lead rules", () => {
         convertedContactId: "contact-1"
       })
     ).toThrow("version conflict");
+  });
+});
+
+describe("conference prospecting rules", () => {
+  it("scores conference prospects and derives priority bands", () => {
+    const score = scoreConferenceProspect({
+      seniorityScore: 4,
+      companyFitScore: 4,
+      signalScore: 5,
+      conferenceSignalScore: 3,
+      warmIntroScore: 1,
+      timingScore: 2
+    });
+
+    expect(score.totalScore).toBe(19);
+    expect(score.priorityBand).toBe("request_meeting");
+  });
+
+  it("rejects out-of-range score inputs", () => {
+    expect(() =>
+      scoreConferenceProspect({
+        seniorityScore: 5,
+        companyFitScore: 4,
+        signalScore: 5,
+        conferenceSignalScore: 3,
+        warmIntroScore: 1,
+        timingScore: 2
+      })
+    ).toThrow("seniorityScore");
+  });
+
+  it("requires lawful basis notes before storing outreach email", () => {
+    expect(() =>
+      assertConferenceEmailLawfulBasis({
+        email: "buyer@example.com"
+      })
+    ).toThrow("Lawful basis");
+  });
+
+  it("blocks outreach actions for opted-out people", () => {
+    expect(() =>
+      assertConferenceOutreachAllowed({
+        optOutStatus: "opted_out",
+        outreachStatus: "meeting_requested"
+      })
+    ).toThrow("Opted-out");
   });
 });

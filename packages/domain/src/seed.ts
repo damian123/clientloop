@@ -1,6 +1,10 @@
 import type {
   Account,
   Activity,
+  Conference,
+  ConferenceCompany,
+  ConferenceMeeting,
+  ConferencePerson,
   Contact,
   CustomFieldDefinition,
   Lead,
@@ -11,7 +15,6 @@ import type {
   Task,
   User
 } from "./types";
-
 export const seedTenantId = "00000000-0000-4000-8000-000000000001";
 export const seedUserId = "00000000-0000-4000-8000-000000000101";
 export const seedManagerId = "00000000-0000-4000-8000-000000000102";
@@ -21,6 +24,7 @@ const now = "2026-05-11T00:00:00.000Z";
 const allResources: Permission["resource"][] = [
   "account",
   "contact",
+  "conference",
   "lead",
   "opportunity",
   "activity",
@@ -268,6 +272,90 @@ export const seedOpportunities: Opportunity[] = [
   }
 ];
 
+export const seedConferences: Conference[] = [
+  {
+    id: "00000000-0000-4000-8000-000000008001",
+    name: "Digital Assets Summit",
+    startDate: "2026-06-18",
+    endDate: "2026-06-20",
+    location: "New York, NY",
+    website: "https://example.com/digital-assets-summit",
+    audienceType: "Institutional digital assets and private markets",
+    organizerContact: "sponsors@example.com",
+    sponsorPackageLink: "https://example.com/digital-assets-summit/sponsors",
+    appName: "Summit Connect",
+    attendeeAccessStatus: "opt_in_directory",
+    sourceNotes: "Seed conference for account first prospecting workflows.",
+    ...audit
+  }
+];
+
+export const seedConferenceCompanies: ConferenceCompany[] = [
+  {
+    id: "00000000-0000-4000-8000-000000008101",
+    conferenceId: seedConferences[0]!.id,
+    accountId: seedAccounts[2]!.id,
+    company: "Harbor Finance",
+    website: "https://harbor.example",
+    conferenceRole: "sponsor",
+    sector: "Private markets infrastructure",
+    rwaRelevance: true,
+    privateMarketsRelevance: true,
+    fundraisingRelevance: false,
+    marketEntryRelevance: true,
+    partnershipRelevance: true,
+    companyScore: 17,
+    sourceUrl: "https://example.com/digital-assets-summit/sponsors",
+    sourceNotes: "Sponsor page shows market infrastructure focus.",
+    ...audit
+  }
+];
+
+export const seedConferencePeople: ConferencePerson[] = [
+  {
+    id: "00000000-0000-4000-8000-000000008201",
+    conferenceId: seedConferences[0]!.id,
+    conferenceCompanyId: seedConferenceCompanies[0]!.id,
+    accountId: seedAccounts[2]!.id,
+    name: "Avery Stone",
+    title: "Head of Partnerships",
+    linkedIn: "https://linkedin.com/in/avery-stone-example",
+    conferenceSignal: "Sponsor speaker on market infrastructure panel",
+    icpCategory: "strategic_partner",
+    buyingSignal: "Public partnership expansion announcement",
+    relationshipPath: "Ask Morgan for intro",
+    outreachStatus: "not_started",
+    sourceType: "speaker_agenda",
+    source: "Agenda page",
+    lawfulBasisNotes: "No email stored; outreach should use warm intro or event app.",
+    optOutStatus: "not_opted_out",
+    seniorityScore: 4,
+    companyFitScore: 4,
+    signalScore: 5,
+    conferenceSignalScore: 3,
+    warmIntroScore: 1,
+    timingScore: 2,
+    totalScore: 19,
+    priorityBand: "request_meeting",
+    ...audit
+  }
+];
+
+export const seedConferenceMeetings: ConferenceMeeting[] = [
+  {
+    id: "00000000-0000-4000-8000-000000008301",
+    conferenceId: seedConferences[0]!.id,
+    conferencePersonId: seedConferencePeople[0]!.id,
+    reasonToMeet: "Compare notes on tokenized private market distribution partnerships.",
+    proposedAsk: "15-minute meeting during the summit",
+    introPath: "Morgan manager warm intro",
+    status: "not_requested",
+    notes: "Prioritize before conference week.",
+    nextStep: "Request intro",
+    ...audit
+  }
+];
+
 export const seedTasks: Task[] = [
   {
     id: "00000000-0000-4000-8000-000000005001",
@@ -333,6 +421,10 @@ export function createSeedData() {
     contacts: structuredClone(seedContacts),
     leads: structuredClone(seedLeads),
     opportunities: structuredClone(seedOpportunities),
+    conferences: structuredClone(seedConferences),
+    conferenceCompanies: structuredClone(seedConferenceCompanies),
+    conferencePeople: structuredClone(seedConferencePeople),
+    conferenceMeetings: structuredClone(seedConferenceMeetings),
     tasks: structuredClone(seedTasks),
     notes: structuredClone(seedNotes),
     activities: structuredClone(seedActivities)

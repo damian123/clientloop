@@ -1,8 +1,15 @@
 import {
   apiSchemas,
   accountImportRequestSchema,
+  conferenceImportRequestSchema,
+  conferenceMeetingImportRequestSchema,
+  conferencePersonImportRequestSchema,
   createAccountSchema,
   createActivitySchema,
+  createConferenceCompanySchema,
+  createConferenceMeetingSchema,
+  createConferencePersonSchema,
+  createConferenceSchema,
   createContactSchema,
   createCustomFieldDefinitionSchema,
   createLeadSchema,
@@ -14,7 +21,12 @@ import {
   devLoginSchema,
   exportEntitySchema,
   opportunityImportRequestSchema,
+  scoreConferencePersonSchema,
   updateActivitySchema,
+  updateConferenceCompanySchema,
+  updateConferenceMeetingSchema,
+  updateConferencePersonSchema,
+  updateConferenceSchema,
   updateCustomFieldValuesSchema,
   updateNoteSchema,
   updateTaskSchema,
@@ -23,12 +35,25 @@ import {
   type AccountImportPreview,
   type AccountImportRequest,
   type AccountImportResult,
+  type ConferenceCompanyImportPreview,
+  type ConferenceImportRequest,
+  type ConferenceCompanyImportResult,
+  type ConferenceMeetingImportPreview,
+  type ConferenceMeetingImportRequest,
+  type ConferenceMeetingImportResult,
+  type ConferencePersonImportPreview,
+  type ConferencePersonImportRequest,
+  type ConferencePersonImportResult,
   type ContactImportPreview,
   type ContactImportRequest,
   type ContactImportResult,
   type ConvertLeadInput,
   type CreateActivityInput,
   type CreateAccountInput,
+  type CreateConferenceCompanyInput,
+  type CreateConferenceInput,
+  type CreateConferenceMeetingInput,
+  type CreateConferencePersonInput,
   type CreateContactInput,
   type CreateCustomFieldDefinitionInput,
   type CreateLeadInput,
@@ -46,7 +71,12 @@ import {
   type OpportunityImportResult,
   type SearchResult,
   type SessionResponse,
+  type ScoreConferencePersonInput,
   type UpdateActivityInput,
+  type UpdateConferenceCompanyInput,
+  type UpdateConferenceInput,
+  type UpdateConferenceMeetingInput,
+  type UpdateConferencePersonInput,
   type UpdateCustomFieldValuesInput,
   type UpdateNoteInput,
   type UpdateOpportunityInput,
@@ -55,6 +85,10 @@ import {
 import type {
   Account,
   Activity,
+  Conference,
+  ConferenceCompany,
+  ConferenceMeeting,
+  ConferencePerson,
   Contact,
   CustomFieldDefinition,
   Lead,
@@ -208,6 +242,140 @@ export class CRMClient {
         "If-Match": String(input.expectedVersion)
       }),
       apiSchemas.opportunity
+    );
+  }
+
+  async listConferences(): Promise<Page<Conference>> {
+    return this.request("/v1/conferences", { method: "GET" }, apiSchemas.conferencePage);
+  }
+
+  async createConference(input: CreateConferenceInput): Promise<Conference> {
+    return this.request(
+      "/v1/conferences",
+      this.jsonRequest("POST", createConferenceSchema.parse(input)),
+      apiSchemas.conference
+    );
+  }
+
+  async updateConference(
+    id: string,
+    input: UpdateConferenceInput
+  ): Promise<Conference> {
+    return this.request(
+      `/v1/conferences/${id}`,
+      this.jsonRequest("PATCH", updateConferenceSchema.parse(input), {
+        "If-Match": String(input.expectedVersion)
+      }),
+      apiSchemas.conference
+    );
+  }
+
+  async listConferenceCompanies(conferenceId: string): Promise<Page<ConferenceCompany>> {
+    return this.request(
+      `/v1/conferences/${conferenceId}/companies`,
+      { method: "GET" },
+      apiSchemas.conferenceCompanyPage
+    );
+  }
+
+  async createConferenceCompany(
+    conferenceId: string,
+    input: CreateConferenceCompanyInput
+  ): Promise<ConferenceCompany> {
+    return this.request(
+      `/v1/conferences/${conferenceId}/companies`,
+      this.jsonRequest("POST", createConferenceCompanySchema.parse(input)),
+      apiSchemas.conferenceCompany
+    );
+  }
+
+  async updateConferenceCompany(
+    id: string,
+    input: UpdateConferenceCompanyInput
+  ): Promise<ConferenceCompany> {
+    return this.request(
+      `/v1/conference-companies/${id}`,
+      this.jsonRequest("PATCH", updateConferenceCompanySchema.parse(input), {
+        "If-Match": String(input.expectedVersion)
+      }),
+      apiSchemas.conferenceCompany
+    );
+  }
+
+  async listConferencePeople(conferenceId: string): Promise<Page<ConferencePerson>> {
+    return this.request(
+      `/v1/conferences/${conferenceId}/people`,
+      { method: "GET" },
+      apiSchemas.conferencePersonPage
+    );
+  }
+
+  async createConferencePerson(
+    conferenceId: string,
+    input: CreateConferencePersonInput
+  ): Promise<ConferencePerson> {
+    return this.request(
+      `/v1/conferences/${conferenceId}/people`,
+      this.jsonRequest("POST", createConferencePersonSchema.parse(input)),
+      apiSchemas.conferencePerson
+    );
+  }
+
+  async updateConferencePerson(
+    id: string,
+    input: UpdateConferencePersonInput
+  ): Promise<ConferencePerson> {
+    return this.request(
+      `/v1/conference-people/${id}`,
+      this.jsonRequest("PATCH", updateConferencePersonSchema.parse(input), {
+        "If-Match": String(input.expectedVersion)
+      }),
+      apiSchemas.conferencePerson
+    );
+  }
+
+  async scoreConferencePerson(
+    id: string,
+    input: ScoreConferencePersonInput
+  ): Promise<ConferencePerson> {
+    return this.request(
+      `/v1/conference-people/${id}/score`,
+      this.jsonRequest("POST", scoreConferencePersonSchema.parse(input), {
+        "If-Match": String(input.expectedVersion)
+      }),
+      apiSchemas.conferencePerson
+    );
+  }
+
+  async listConferenceMeetings(conferenceId: string): Promise<Page<ConferenceMeeting>> {
+    return this.request(
+      `/v1/conferences/${conferenceId}/meetings`,
+      { method: "GET" },
+      apiSchemas.conferenceMeetingPage
+    );
+  }
+
+  async createConferenceMeeting(
+    conferenceId: string,
+    input: CreateConferenceMeetingInput
+  ): Promise<ConferenceMeeting> {
+    return this.request(
+      `/v1/conferences/${conferenceId}/meetings`,
+      this.jsonRequest("POST", createConferenceMeetingSchema.parse(input)),
+      apiSchemas.conferenceMeeting
+    );
+  }
+
+  async updateConferenceMeeting(
+    id: string,
+    input: UpdateConferenceMeetingInput
+  ): Promise<ConferenceMeeting> {
+    return this.request(
+      `/v1/conference-meetings/${id}`,
+      this.jsonRequest("PATCH", updateConferenceMeetingSchema.parse(input), {
+        "If-Match": String(input.expectedVersion)
+      }),
+      apiSchemas.conferenceMeeting
     );
   }
 
@@ -391,6 +559,72 @@ export class CRMClient {
       "/v1/imports/opportunities",
       this.jsonRequest("POST", opportunityImportRequestSchema.parse(input)),
       apiSchemas.opportunityImportResult
+    );
+  }
+
+  async previewConferenceCompanyImport(
+    conferenceId: string,
+    input: ConferenceImportRequest
+  ): Promise<ConferenceCompanyImportPreview> {
+    return this.request(
+      `/v1/imports/conferences/${conferenceId}/companies/preview`,
+      this.jsonRequest("POST", conferenceImportRequestSchema.parse(input)),
+      apiSchemas.conferenceCompanyImportPreview
+    );
+  }
+
+  async importConferenceCompanies(
+    conferenceId: string,
+    input: ConferenceImportRequest
+  ): Promise<ConferenceCompanyImportResult> {
+    return this.request(
+      `/v1/imports/conferences/${conferenceId}/companies`,
+      this.jsonRequest("POST", conferenceImportRequestSchema.parse(input)),
+      apiSchemas.conferenceCompanyImportResult
+    );
+  }
+
+  async previewConferencePersonImport(
+    conferenceId: string,
+    input: ConferencePersonImportRequest
+  ): Promise<ConferencePersonImportPreview> {
+    return this.request(
+      `/v1/imports/conferences/${conferenceId}/people/preview`,
+      this.jsonRequest("POST", conferencePersonImportRequestSchema.parse(input)),
+      apiSchemas.conferencePersonImportPreview
+    );
+  }
+
+  async importConferencePeople(
+    conferenceId: string,
+    input: ConferencePersonImportRequest
+  ): Promise<ConferencePersonImportResult> {
+    return this.request(
+      `/v1/imports/conferences/${conferenceId}/people`,
+      this.jsonRequest("POST", conferencePersonImportRequestSchema.parse(input)),
+      apiSchemas.conferencePersonImportResult
+    );
+  }
+
+  async previewConferenceMeetingImport(
+    conferenceId: string,
+    input: ConferenceMeetingImportRequest
+  ): Promise<ConferenceMeetingImportPreview> {
+    return this.request(
+      `/v1/imports/conferences/${conferenceId}/meetings/preview`,
+      this.jsonRequest("POST", conferenceMeetingImportRequestSchema.parse(input)),
+      apiSchemas.conferenceMeetingImportPreview
+    );
+  }
+
+  async importConferenceMeetings(
+    conferenceId: string,
+    input: ConferenceMeetingImportRequest
+  ): Promise<ConferenceMeetingImportResult> {
+    return this.request(
+      `/v1/imports/conferences/${conferenceId}/meetings`,
+      this.jsonRequest("POST", conferenceMeetingImportRequestSchema.parse(input)),
+      apiSchemas.conferenceMeetingImportResult
     );
   }
 

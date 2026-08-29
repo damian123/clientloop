@@ -4,6 +4,10 @@ import {
   completeTaskSchema,
   createActivitySchema,
   createAccountSchema,
+  createConferenceCompanySchema,
+  createConferenceMeetingSchema,
+  createConferencePersonSchema,
+  createConferenceSchema,
   createContactSchema,
   createCustomFieldDefinitionSchema,
   createLeadSchema,
@@ -12,24 +16,36 @@ import {
   createWebhookSubscriptionSchema,
   convertLeadSchema,
   accountImportRequestSchema,
+  conferenceImportRequestSchema,
+  conferenceMeetingImportRequestSchema,
+  conferencePersonImportRequestSchema,
   contactImportRequestSchema,
   exportEntitySchema,
   listQuerySchema,
   opportunityImportRequestSchema,
   searchQuerySchema,
+  scoreConferencePersonSchema,
   recordEntityTypeSchema,
   updateActivitySchema,
+  updateConferenceCompanySchema,
+  updateConferenceMeetingSchema,
+  updateConferencePersonSchema,
+  updateConferenceSchema,
   updateCustomFieldValuesSchema,
   updateNoteSchema,
   updateOpportunitySchema,
-  updateTaskSchema
+  updateTaskSchema,
+  type ConferenceMeetingImportRow
 } from "@clientloop/contracts";
 import { openApiDocument } from "@clientloop/contracts";
-import { assertCan } from "@clientloop/domain";
+import { assertCan, type ConferenceCompany, type ConferencePerson } from "@clientloop/domain";
 import { principalFromRequest } from "../auth";
 import {
   exportRecordsCsv,
   previewAccountImport,
+  previewConferenceCompanyImport,
+  previewConferenceMeetingImport,
+  previewConferencePersonImport,
   previewContactImport,
   previewOpportunityImport
 } from "../import-export";
@@ -136,6 +152,163 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
         ? request.headers["idempotency-key"][0]
         : request.headers["idempotency-key"]
     });
+  });
+
+  app.get("/v1/conferences", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    return repository.listConferences(principal.tenantId, listQuerySchema.parse(request.query));
+  });
+
+  app.post("/v1/conferences", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const conference = await repository.createConference(
+      principal,
+      createConferenceSchema.parse(request.body)
+    );
+    return reply.code(201).send(conference);
+  });
+
+  app.patch("/v1/conferences/:id", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const body = updateConferenceSchema.parse(request.body);
+    const ifMatch = request.headers["if-match"];
+
+    if (ifMatch && String(body.expectedVersion) !== String(Array.isArray(ifMatch) ? ifMatch[0] : ifMatch)) {
+      return reply.code(409).send({
+        error: "If-Match header does not match expectedVersion",
+        statusCode: 409
+      });
+    }
+
+    return repository.updateConference({ principal, id: params.id, body });
+  });
+
+  app.get("/v1/conferences/:id/companies", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    return repository.listConferenceCompanies(
+      principal.tenantId,
+      params.id,
+      listQuerySchema.parse(request.query)
+    );
+  });
+
+  app.post("/v1/conferences/:id/companies", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const company = await repository.createConferenceCompany(
+      principal,
+      params.id,
+      createConferenceCompanySchema.parse(request.body)
+    );
+    return reply.code(201).send(company);
+  });
+
+  app.patch("/v1/conference-companies/:id", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const body = updateConferenceCompanySchema.parse(request.body);
+    const ifMatch = request.headers["if-match"];
+
+    if (ifMatch && String(body.expectedVersion) !== String(Array.isArray(ifMatch) ? ifMatch[0] : ifMatch)) {
+      return reply.code(409).send({
+        error: "If-Match header does not match expectedVersion",
+        statusCode: 409
+      });
+    }
+
+    return repository.updateConferenceCompany({ principal, id: params.id, body });
+  });
+
+  app.get("/v1/conferences/:id/people", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    return repository.listConferencePeople(
+      principal.tenantId,
+      params.id,
+      listQuerySchema.parse(request.query)
+    );
+  });
+
+  app.post("/v1/conferences/:id/people", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const person = await repository.createConferencePerson(
+      principal,
+      params.id,
+      createConferencePersonSchema.parse(request.body)
+    );
+    return reply.code(201).send(person);
+  });
+
+  app.patch("/v1/conference-people/:id", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const body = updateConferencePersonSchema.parse(request.body);
+    const ifMatch = request.headers["if-match"];
+
+    if (ifMatch && String(body.expectedVersion) !== String(Array.isArray(ifMatch) ? ifMatch[0] : ifMatch)) {
+      return reply.code(409).send({
+        error: "If-Match header does not match expectedVersion",
+        statusCode: 409
+      });
+    }
+
+    return repository.updateConferencePerson({ principal, id: params.id, body });
+  });
+
+  app.post("/v1/conference-people/:id/score", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const body = scoreConferencePersonSchema.parse(request.body);
+    const ifMatch = request.headers["if-match"];
+
+    if (ifMatch && String(body.expectedVersion) !== String(Array.isArray(ifMatch) ? ifMatch[0] : ifMatch)) {
+      return reply.code(409).send({
+        error: "If-Match header does not match expectedVersion",
+        statusCode: 409
+      });
+    }
+
+    return repository.scoreConferencePerson({ principal, id: params.id, body });
+  });
+
+  app.get("/v1/conferences/:id/meetings", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    return repository.listConferenceMeetings(
+      principal.tenantId,
+      params.id,
+      listQuerySchema.parse(request.query)
+    );
+  });
+
+  app.post("/v1/conferences/:id/meetings", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const meeting = await repository.createConferenceMeeting(
+      principal,
+      params.id,
+      createConferenceMeetingSchema.parse(request.body)
+    );
+    return reply.code(201).send(meeting);
+  });
+
+  app.patch("/v1/conference-meetings/:id", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    const body = updateConferenceMeetingSchema.parse(request.body);
+    const ifMatch = request.headers["if-match"];
+
+    if (ifMatch && String(body.expectedVersion) !== String(Array.isArray(ifMatch) ? ifMatch[0] : ifMatch)) {
+      return reply.code(409).send({
+        error: "If-Match header does not match expectedVersion",
+        statusCode: 409
+      });
+    }
+
+    return repository.updateConferenceMeeting({ principal, id: params.id, body });
   });
 
   app.get("/v1/tasks", async (request) => {
@@ -439,8 +612,261 @@ export async function registerCrmRoutes(app: FastifyInstance, repository: CRMRep
     });
   });
 
+  app.post("/v1/imports/conferences/:id/companies/preview", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    return previewConferenceCompanyImport(conferenceImportRequestSchema.parse(request.body));
+  });
+
+  app.post("/v1/imports/conferences/:id/companies", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    const input = conferenceImportRequestSchema.parse(request.body);
+    const preview = previewConferenceCompanyImport(input);
+
+    if (preview.errors.length > 0) {
+      return reply.code(400).send({
+        importedCount: 0,
+        companies: [],
+        errors: preview.errors
+      });
+    }
+
+    const companies = [];
+    for (const row of preview.rows) {
+      companies.push(
+        await repository.createConferenceCompany(principal, params.id, {
+          accountId: row.accountId,
+          company: row.company,
+          website: row.website,
+          conferenceRole: row.conferenceRole,
+          sector: row.sector,
+          rwaRelevance: row.rwaRelevance,
+          privateMarketsRelevance: row.privateMarketsRelevance,
+          fundraisingRelevance: row.fundraisingRelevance,
+          marketEntryRelevance: row.marketEntryRelevance,
+          partnershipRelevance: row.partnershipRelevance,
+          companyScore: row.companyScore,
+          sourceUrl: row.sourceUrl,
+          sourceNotes: row.sourceNotes
+        })
+      );
+    }
+
+    return reply.code(201).send({
+      importedCount: companies.length,
+      companies,
+      errors: []
+    });
+  });
+
+  app.post("/v1/imports/conferences/:id/people/preview", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    return previewConferencePersonImport(conferencePersonImportRequestSchema.parse(request.body));
+  });
+
+  app.post("/v1/imports/conferences/:id/people", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    const input = conferencePersonImportRequestSchema.parse(request.body);
+    const preview = previewConferencePersonImport(input);
+
+    if (preview.errors.length > 0) {
+      return reply.code(400).send({
+        importedCount: 0,
+        people: [],
+        errors: preview.errors
+      });
+    }
+
+    const conferenceCompanies = (
+      await repository.listConferenceCompanies(principal.tenantId, params.id, { limit: 100 })
+    ).items;
+    const companyErrors = [];
+    const companyByName = new Map(
+      conferenceCompanies.map((company) => [company.company.trim().toLowerCase(), company])
+    );
+    for (const row of preview.rows) {
+      if (!row.conferenceCompanyId && row.company && !companyByName.has(row.company.trim().toLowerCase())) {
+        companyErrors.push({
+          row: row.row,
+          field: "company",
+          message: "Conference company was not found"
+        });
+      }
+    }
+
+    if (companyErrors.length > 0) {
+      return reply.code(400).send({
+        importedCount: 0,
+        people: [],
+        errors: companyErrors
+      });
+    }
+
+    const people = [];
+    for (const row of preview.rows) {
+      const conferenceCompanyId =
+        row.conferenceCompanyId ?? companyByName.get(row.company?.trim().toLowerCase() ?? "")?.id;
+      people.push(
+        await repository.createConferencePerson(principal, params.id, {
+          conferenceCompanyId,
+          accountId: row.accountId,
+          contactId: row.contactId,
+          name: row.name,
+          title: row.title,
+          linkedIn: row.linkedIn,
+          email: row.email,
+          conferenceSignal: row.conferenceSignal,
+          icpCategory: row.icpCategory,
+          buyingSignal: row.buyingSignal,
+          relationshipPath: row.relationshipPath,
+          outreachStatus: row.outreachStatus,
+          sourceType: row.sourceType,
+          source: row.source,
+          lawfulBasisNotes: row.lawfulBasisNotes,
+          optOutStatus: row.optOutStatus,
+          seniorityScore: row.seniorityScore,
+          companyFitScore: row.companyFitScore,
+          signalScore: row.signalScore,
+          conferenceSignalScore: row.conferenceSignalScore,
+          warmIntroScore: row.warmIntroScore,
+          timingScore: row.timingScore
+        })
+      );
+    }
+
+    return reply.code(201).send({
+      importedCount: people.length,
+      people,
+      errors: []
+      });
+  });
+
+  app.post("/v1/imports/conferences/:id/meetings/preview", async (request) => {
+    const principal = await principalFromRequest(request, repository);
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    return previewConferenceMeetingImport(conferenceMeetingImportRequestSchema.parse(request.body));
+  });
+
+  app.post("/v1/imports/conferences/:id/meetings", async (request, reply) => {
+    const principal = await principalFromRequest(request, repository);
+    const params = request.params as { id: string };
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    const input = conferenceMeetingImportRequestSchema.parse(request.body);
+    const preview = previewConferenceMeetingImport(input);
+
+    if (preview.errors.length > 0) {
+      return reply.code(400).send({
+        importedCount: 0,
+        meetings: [],
+        errors: preview.errors
+      });
+    }
+
+    const conferenceCompanies = (
+      await repository.listConferenceCompanies(principal.tenantId, params.id, { limit: 100 })
+    ).items;
+    const companyById = new Map(conferenceCompanies.map((company) => [company.id, company]));
+    const conferencePeople = (
+      await repository.listConferencePeople(principal.tenantId, params.id, { limit: 100 })
+    ).items;
+    const personById = new Map(conferencePeople.map((person) => [person.id, person]));
+    const resolutionErrors = [];
+
+    for (const row of preview.rows) {
+      if (row.conferencePersonId) {
+        if (!personById.has(row.conferencePersonId)) {
+          resolutionErrors.push({
+            row: row.row,
+            field: "conferencePersonId",
+            message: "Conference person was not found"
+          });
+        }
+        continue;
+      }
+
+      const name = row.name?.trim().toLowerCase() ?? "";
+      let matches = conferencePeople.filter((person) => person.name.trim().toLowerCase() === name);
+      if (row.company) {
+        const companyName = row.company.trim().toLowerCase();
+        matches = matches.filter((person) => {
+          const company = person.conferenceCompanyId ? companyById.get(person.conferenceCompanyId) : null;
+          return company?.company.trim().toLowerCase() === companyName;
+        });
+      }
+
+      if (matches.length !== 1) {
+        resolutionErrors.push({
+          row: row.row,
+          field: "name",
+          message:
+            matches.length === 0
+              ? "Conference person was not found"
+              : "Conference person match is ambiguous"
+        });
+      }
+    }
+
+    if (resolutionErrors.length > 0) {
+      return reply.code(400).send({
+        importedCount: 0,
+        meetings: [],
+        errors: resolutionErrors
+      });
+    }
+
+    const meetings = [];
+    for (const row of preview.rows) {
+      const conferencePersonId =
+        row.conferencePersonId ?? resolveConferencePersonId(row, conferencePeople, companyById);
+      meetings.push(
+        await repository.createConferenceMeeting(principal, params.id, {
+          conferencePersonId,
+          reasonToMeet: row.reasonToMeet,
+          proposedAsk: row.proposedAsk,
+          introPath: row.introPath,
+          status: row.status,
+          notes: row.notes,
+          nextStep: row.nextStep
+        })
+      );
+    }
+
+    return reply.code(201).send({
+      importedCount: meetings.length,
+      meetings,
+      errors: []
+    });
+  });
+
   app.get("/v1/search", async (request) => {
     const principal = await principalFromRequest(request, repository);
     return repository.search(principal.tenantId, searchQuerySchema.parse(request.query));
   });
+}
+
+function resolveConferencePersonId(
+  row: ConferenceMeetingImportRow,
+  conferencePeople: ConferencePerson[],
+  companyById: Map<string, ConferenceCompany>
+) {
+  if (row.conferencePersonId) {
+    return row.conferencePersonId;
+  }
+
+  const name = row.name?.trim().toLowerCase() ?? "";
+  let matches = conferencePeople.filter((person) => person.name.trim().toLowerCase() === name);
+  if (row.company) {
+    const companyName = row.company.trim().toLowerCase();
+    matches = matches.filter((person) => {
+      const company = person.conferenceCompanyId ? companyById.get(person.conferenceCompanyId) : null;
+      return company?.company.trim().toLowerCase() === companyName;
+    });
+  }
+
+  return matches[0]!.id;
 }

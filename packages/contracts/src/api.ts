@@ -3,6 +3,17 @@ import {
   accountSchema,
   activitySchema,
   contactSchema,
+  attendeeAccessStatusSchema,
+  conferenceCompanySchema,
+  conferenceIcpCategorySchema,
+  conferenceMeetingSchema,
+  conferenceMeetingStatusSchema,
+  conferenceOptOutStatusSchema,
+  conferenceOutreachStatusSchema,
+  conferencePersonSchema,
+  conferenceRoleSchema,
+  conferenceSchema,
+  conferenceSourceTypeSchema,
   customFieldDefinitionSchema,
   customFieldsSchema,
   customFieldTypeSchema,
@@ -64,6 +75,168 @@ export const createOpportunitySchema = z.object({
   ownerUserId: idSchema,
   probabilityPct: z.number().int().min(0).max(100).optional(),
   customFields: customFieldsSchema.default({})
+});
+
+const optionalUrlSchema = z.string().url().optional();
+const nullableUrlSchema = z.string().url().nullable().optional();
+const score0to4 = z.number().int().min(0).max(4);
+const score0to5 = z.number().int().min(0).max(5);
+const score0to3 = z.number().int().min(0).max(3);
+const score0to2 = z.number().int().min(0).max(2);
+
+export const createConferenceSchema = z.object({
+  name: z.string().min(1),
+  startDate: z.string().min(1),
+  endDate: z.string().optional(),
+  location: z.string().optional(),
+  website: optionalUrlSchema,
+  audienceType: z.string().optional(),
+  organizerContact: z.string().optional(),
+  sponsorPackageLink: optionalUrlSchema,
+  appName: z.string().optional(),
+  attendeeAccessStatus: attendeeAccessStatusSchema.default("unknown"),
+  sourceNotes: z.string().optional()
+});
+
+export const updateConferenceSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  name: z.string().min(1).optional(),
+  startDate: z.string().min(1).optional(),
+  endDate: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  website: nullableUrlSchema,
+  audienceType: z.string().nullable().optional(),
+  organizerContact: z.string().nullable().optional(),
+  sponsorPackageLink: nullableUrlSchema,
+  appName: z.string().nullable().optional(),
+  attendeeAccessStatus: attendeeAccessStatusSchema.optional(),
+  sourceNotes: z.string().nullable().optional()
+});
+
+export const createConferenceCompanySchema = z.object({
+  accountId: idSchema.optional(),
+  company: z.string().min(1),
+  website: optionalUrlSchema,
+  conferenceRole: conferenceRoleSchema.default("other"),
+  sector: z.string().optional(),
+  rwaRelevance: z.boolean().default(false),
+  privateMarketsRelevance: z.boolean().default(false),
+  fundraisingRelevance: z.boolean().default(false),
+  marketEntryRelevance: z.boolean().default(false),
+  partnershipRelevance: z.boolean().default(false),
+  companyScore: z.number().int().min(0).max(20).default(0),
+  sourceUrl: optionalUrlSchema,
+  sourceNotes: z.string().optional()
+});
+
+export const updateConferenceCompanySchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  accountId: idSchema.nullable().optional(),
+  company: z.string().min(1).optional(),
+  website: nullableUrlSchema,
+  conferenceRole: conferenceRoleSchema.optional(),
+  sector: z.string().nullable().optional(),
+  rwaRelevance: z.boolean().optional(),
+  privateMarketsRelevance: z.boolean().optional(),
+  fundraisingRelevance: z.boolean().optional(),
+  marketEntryRelevance: z.boolean().optional(),
+  partnershipRelevance: z.boolean().optional(),
+  companyScore: z.number().int().min(0).max(20).optional(),
+  sourceUrl: nullableUrlSchema,
+  sourceNotes: z.string().nullable().optional()
+});
+
+export const conferencePersonScoreInputSchema = z.object({
+  seniorityScore: score0to4,
+  companyFitScore: score0to4,
+  signalScore: score0to5,
+  conferenceSignalScore: score0to3,
+  warmIntroScore: score0to2,
+  timingScore: score0to2
+});
+
+export const createConferencePersonSchema = z.object({
+  conferenceCompanyId: idSchema.optional(),
+  accountId: idSchema.optional(),
+  contactId: idSchema.optional(),
+  name: z.string().min(1),
+  title: z.string().min(1),
+  linkedIn: optionalUrlSchema,
+  email: z.string().email().optional(),
+  conferenceSignal: z.string().optional(),
+  icpCategory: conferenceIcpCategorySchema.default("unknown"),
+  buyingSignal: z.string().optional(),
+  relationshipPath: z.string().optional(),
+  outreachStatus: conferenceOutreachStatusSchema.default("not_started"),
+  sourceType: conferenceSourceTypeSchema.default("manual_research"),
+  source: z.string().optional(),
+  lawfulBasisNotes: z.string().optional(),
+  optOutStatus: conferenceOptOutStatusSchema.default("unknown"),
+  seniorityScore: score0to4.default(0),
+  companyFitScore: score0to4.default(0),
+  signalScore: score0to5.default(0),
+  conferenceSignalScore: score0to3.default(0),
+  warmIntroScore: score0to2.default(0),
+  timingScore: score0to2.default(0)
+}).superRefine((input, ctx) => {
+  if (input.email && !input.lawfulBasisNotes?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["lawfulBasisNotes"],
+      message: "Lawful basis notes are required when email is stored"
+    });
+  }
+});
+
+export const updateConferencePersonSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  conferenceCompanyId: idSchema.nullable().optional(),
+  accountId: idSchema.nullable().optional(),
+  contactId: idSchema.nullable().optional(),
+  name: z.string().min(1).optional(),
+  title: z.string().min(1).optional(),
+  linkedIn: nullableUrlSchema,
+  email: z.string().email().nullable().optional(),
+  conferenceSignal: z.string().nullable().optional(),
+  icpCategory: conferenceIcpCategorySchema.optional(),
+  buyingSignal: z.string().nullable().optional(),
+  relationshipPath: z.string().nullable().optional(),
+  outreachStatus: conferenceOutreachStatusSchema.optional(),
+  sourceType: conferenceSourceTypeSchema.optional(),
+  source: z.string().nullable().optional(),
+  lawfulBasisNotes: z.string().nullable().optional(),
+  optOutStatus: conferenceOptOutStatusSchema.optional(),
+  seniorityScore: score0to4.optional(),
+  companyFitScore: score0to4.optional(),
+  signalScore: score0to5.optional(),
+  conferenceSignalScore: score0to3.optional(),
+  warmIntroScore: score0to2.optional(),
+  timingScore: score0to2.optional()
+});
+
+export const scoreConferencePersonSchema = conferencePersonScoreInputSchema.extend({
+  expectedVersion: z.number().int().positive(),
+  scoreNotes: z.string().optional()
+});
+
+export const createConferenceMeetingSchema = z.object({
+  conferencePersonId: idSchema,
+  reasonToMeet: z.string().min(1),
+  proposedAsk: z.string().optional(),
+  introPath: z.string().optional(),
+  status: conferenceMeetingStatusSchema.default("not_requested"),
+  notes: z.string().optional(),
+  nextStep: z.string().optional()
+});
+
+export const updateConferenceMeetingSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  reasonToMeet: z.string().min(1).optional(),
+  proposedAsk: z.string().nullable().optional(),
+  introPath: z.string().nullable().optional(),
+  status: conferenceMeetingStatusSchema.optional(),
+  notes: z.string().nullable().optional(),
+  nextStep: z.string().nullable().optional()
 });
 
 export const updateOpportunitySchema = z.object({
@@ -315,6 +488,183 @@ export const opportunityImportResultSchema = z.object({
   errors: z.array(contactImportErrorSchema)
 });
 
+export const conferenceCompanyImportMappingSchema = z.object({
+  company: z.string().optional(),
+  website: z.string().optional(),
+  conferenceRole: z.string().optional(),
+  sector: z.string().optional(),
+  rwaRelevance: z.string().optional(),
+  privateMarketsRelevance: z.string().optional(),
+  fundraisingRelevance: z.string().optional(),
+  marketEntryRelevance: z.string().optional(),
+  partnershipRelevance: z.string().optional(),
+  companyScore: z.string().optional(),
+  sourceUrl: z.string().optional(),
+  sourceNotes: z.string().optional(),
+  accountId: z.string().optional()
+});
+
+export const conferenceImportRequestSchema = z.object({
+  csv: z.string().min(1),
+  mapping: conferenceCompanyImportMappingSchema.optional()
+});
+
+export const conferenceCompanyImportRowSchema = z.object({
+  row: z.number().int().positive(),
+  company: z.string(),
+  website: z.string().optional(),
+  conferenceRole: conferenceRoleSchema,
+  sector: z.string().optional(),
+  rwaRelevance: z.boolean(),
+  privateMarketsRelevance: z.boolean(),
+  fundraisingRelevance: z.boolean(),
+  marketEntryRelevance: z.boolean(),
+  partnershipRelevance: z.boolean(),
+  companyScore: z.number().int().min(0).max(20),
+  sourceUrl: z.string().optional(),
+  sourceNotes: z.string().optional(),
+  accountId: z.string().optional()
+});
+
+export const conferenceCompanyImportPreviewSchema = z.object({
+  totalRows: z.number().int().nonnegative(),
+  validRows: z.number().int().nonnegative(),
+  errors: z.array(contactImportErrorSchema),
+  rows: z.array(conferenceCompanyImportRowSchema)
+});
+
+export const conferenceCompanyImportResultSchema = z.object({
+  importedCount: z.number().int().nonnegative(),
+  companies: z.array(conferenceCompanySchema),
+  errors: z.array(contactImportErrorSchema)
+});
+
+export const conferencePersonImportMappingSchema = z.object({
+  name: z.string().optional(),
+  title: z.string().optional(),
+  company: z.string().optional(),
+  conferenceCompanyId: z.string().optional(),
+  accountId: z.string().optional(),
+  contactId: z.string().optional(),
+  linkedIn: z.string().optional(),
+  email: z.string().optional(),
+  conferenceSignal: z.string().optional(),
+  icpCategory: z.string().optional(),
+  buyingSignal: z.string().optional(),
+  relationshipPath: z.string().optional(),
+  outreachStatus: z.string().optional(),
+  sourceType: z.string().optional(),
+  source: z.string().optional(),
+  lawfulBasisNotes: z.string().optional(),
+  optOutStatus: z.string().optional(),
+  seniorityScore: z.string().optional(),
+  companyFitScore: z.string().optional(),
+  signalScore: z.string().optional(),
+  conferenceSignalScore: z.string().optional(),
+  warmIntroScore: z.string().optional(),
+  timingScore: z.string().optional()
+});
+
+export const conferencePersonImportRequestSchema = z.object({
+  csv: z.string().min(1),
+  mapping: conferencePersonImportMappingSchema.optional()
+});
+
+export const conferencePersonImportRowSchema = z.object({
+  row: z.number().int().positive(),
+  name: z.string(),
+  title: z.string(),
+  company: z.string().optional(),
+  conferenceCompanyId: z.string().optional(),
+  accountId: z.string().optional(),
+  contactId: z.string().optional(),
+  linkedIn: z.string().optional(),
+  email: z.string().optional(),
+  conferenceSignal: z.string().optional(),
+  icpCategory: conferenceIcpCategorySchema,
+  buyingSignal: z.string().optional(),
+  relationshipPath: z.string().optional(),
+  outreachStatus: conferenceOutreachStatusSchema,
+  sourceType: conferenceSourceTypeSchema,
+  source: z.string().optional(),
+  lawfulBasisNotes: z.string().optional(),
+  optOutStatus: conferenceOptOutStatusSchema,
+  seniorityScore: score0to4,
+  companyFitScore: score0to4,
+  signalScore: score0to5,
+  conferenceSignalScore: score0to3,
+  warmIntroScore: score0to2,
+  timingScore: score0to2
+});
+
+export const conferencePersonImportPreviewSchema = z.object({
+  totalRows: z.number().int().nonnegative(),
+  validRows: z.number().int().nonnegative(),
+  errors: z.array(contactImportErrorSchema),
+  rows: z.array(conferencePersonImportRowSchema)
+});
+
+export const conferencePersonImportResultSchema = z.object({
+  importedCount: z.number().int().nonnegative(),
+  people: z.array(conferencePersonSchema),
+  errors: z.array(contactImportErrorSchema)
+});
+
+export const conferenceMeetingImportMappingSchema = z.object({
+  conferencePersonId: z.string().optional(),
+  name: z.string().optional(),
+  company: z.string().optional(),
+  reasonToMeet: z.string().optional(),
+  proposedAsk: z.string().optional(),
+  introPath: z.string().optional(),
+  status: z.string().optional(),
+  meetingRequested: z.string().optional(),
+  meetingBooked: z.string().optional(),
+  notes: z.string().optional(),
+  nextStep: z.string().optional()
+});
+
+export const conferenceMeetingImportRequestSchema = z.object({
+  csv: z.string().min(1),
+  mapping: conferenceMeetingImportMappingSchema.optional()
+});
+
+export const conferenceMeetingImportRowSchema = z.object({
+  row: z.number().int().positive(),
+  conferencePersonId: z.string().optional(),
+  name: z.string().optional(),
+  company: z.string().optional(),
+  reasonToMeet: z.string(),
+  proposedAsk: z.string().optional(),
+  introPath: z.string().optional(),
+  status: conferenceMeetingStatusSchema,
+  meetingRequested: z.boolean().optional(),
+  meetingBooked: z.boolean().optional(),
+  notes: z.string().optional(),
+  nextStep: z.string().optional()
+}).superRefine((row, ctx) => {
+  if (!row.conferencePersonId && !row.name) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["name"],
+      message: "Name or conference person ID is required"
+    });
+  }
+});
+
+export const conferenceMeetingImportPreviewSchema = z.object({
+  totalRows: z.number().int().nonnegative(),
+  validRows: z.number().int().nonnegative(),
+  errors: z.array(contactImportErrorSchema),
+  rows: z.array(conferenceMeetingImportRowSchema)
+});
+
+export const conferenceMeetingImportResultSchema = z.object({
+  importedCount: z.number().int().nonnegative(),
+  meetings: z.array(conferenceMeetingSchema),
+  errors: z.array(contactImportErrorSchema)
+});
+
 export const searchQuerySchema = z.object({
   q: z.string().min(1),
   limit: z.coerce.number().int().min(1).max(25).default(10)
@@ -323,6 +673,10 @@ export const searchQuerySchema = z.object({
 export const dashboardSchema = z.object({
   accounts: z.array(accountSchema),
   contacts: z.array(contactSchema),
+  conferences: z.array(conferenceSchema),
+  conferenceCompanies: z.array(conferenceCompanySchema),
+  conferencePeople: z.array(conferencePersonSchema),
+  conferenceMeetings: z.array(conferenceMeetingSchema),
   leads: z.array(leadSchema),
   opportunities: z.array(opportunitySchema),
   tasks: z.array(taskSchema),
@@ -350,6 +704,10 @@ export const apiSchemas = {
   contact: contactSchema,
   lead: leadSchema,
   opportunity: opportunitySchema,
+  conference: conferenceSchema,
+  conferenceCompany: conferenceCompanySchema,
+  conferencePerson: conferencePersonSchema,
+  conferenceMeeting: conferenceMeetingSchema,
   task: taskSchema,
   note: noteSchema,
   activity: activitySchema,
@@ -359,6 +717,10 @@ export const apiSchemas = {
   contactPage: pageSchema(contactSchema),
   leadPage: pageSchema(leadSchema),
   opportunityPage: pageSchema(opportunitySchema),
+  conferencePage: pageSchema(conferenceSchema),
+  conferenceCompanyPage: pageSchema(conferenceCompanySchema),
+  conferencePersonPage: pageSchema(conferencePersonSchema),
+  conferenceMeetingPage: pageSchema(conferenceMeetingSchema),
   leadConversionResult: leadConversionResultSchema,
   taskPage: pageSchema(taskSchema),
   activityPage: pageSchema(activitySchema),
@@ -374,6 +736,12 @@ export const apiSchemas = {
   contactImportResult: contactImportResultSchema,
   opportunityImportPreview: opportunityImportPreviewSchema,
   opportunityImportResult: opportunityImportResultSchema,
+  conferenceCompanyImportPreview: conferenceCompanyImportPreviewSchema,
+  conferenceCompanyImportResult: conferenceCompanyImportResultSchema,
+  conferencePersonImportPreview: conferencePersonImportPreviewSchema,
+  conferencePersonImportResult: conferencePersonImportResultSchema,
+  conferenceMeetingImportPreview: conferenceMeetingImportPreviewSchema,
+  conferenceMeetingImportResult: conferenceMeetingImportResultSchema,
   customFieldValueUpdateResult: customFieldValueUpdateResultSchema
 };
 
@@ -386,6 +754,15 @@ export type ConvertLeadOpportunityInput = z.infer<typeof convertLeadOpportunityS
 export type LeadConversionResult = z.infer<typeof leadConversionResultSchema>;
 export type CreateOpportunityInput = z.infer<typeof createOpportunitySchema>;
 export type UpdateOpportunityInput = z.infer<typeof updateOpportunitySchema>;
+export type CreateConferenceInput = z.infer<typeof createConferenceSchema>;
+export type UpdateConferenceInput = z.infer<typeof updateConferenceSchema>;
+export type CreateConferenceCompanyInput = z.infer<typeof createConferenceCompanySchema>;
+export type UpdateConferenceCompanyInput = z.infer<typeof updateConferenceCompanySchema>;
+export type CreateConferencePersonInput = z.infer<typeof createConferencePersonSchema>;
+export type UpdateConferencePersonInput = z.infer<typeof updateConferencePersonSchema>;
+export type ScoreConferencePersonInput = z.infer<typeof scoreConferencePersonSchema>;
+export type CreateConferenceMeetingInput = z.infer<typeof createConferenceMeetingSchema>;
+export type UpdateConferenceMeetingInput = z.infer<typeof updateConferenceMeetingSchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type CompleteTaskInput = z.infer<typeof completeTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
@@ -417,6 +794,21 @@ export type OpportunityImportRequest = z.infer<typeof opportunityImportRequestSc
 export type OpportunityImportRow = z.infer<typeof opportunityImportRowSchema>;
 export type OpportunityImportPreview = z.infer<typeof opportunityImportPreviewSchema>;
 export type OpportunityImportResult = z.infer<typeof opportunityImportResultSchema>;
+export type ConferenceCompanyImportMapping = z.infer<typeof conferenceCompanyImportMappingSchema>;
+export type ConferenceImportRequest = z.infer<typeof conferenceImportRequestSchema>;
+export type ConferenceCompanyImportRow = z.infer<typeof conferenceCompanyImportRowSchema>;
+export type ConferenceCompanyImportPreview = z.infer<typeof conferenceCompanyImportPreviewSchema>;
+export type ConferenceCompanyImportResult = z.infer<typeof conferenceCompanyImportResultSchema>;
+export type ConferencePersonImportMapping = z.infer<typeof conferencePersonImportMappingSchema>;
+export type ConferencePersonImportRequest = z.infer<typeof conferencePersonImportRequestSchema>;
+export type ConferencePersonImportRow = z.infer<typeof conferencePersonImportRowSchema>;
+export type ConferencePersonImportPreview = z.infer<typeof conferencePersonImportPreviewSchema>;
+export type ConferencePersonImportResult = z.infer<typeof conferencePersonImportResultSchema>;
+export type ConferenceMeetingImportMapping = z.infer<typeof conferenceMeetingImportMappingSchema>;
+export type ConferenceMeetingImportRequest = z.infer<typeof conferenceMeetingImportRequestSchema>;
+export type ConferenceMeetingImportRow = z.infer<typeof conferenceMeetingImportRowSchema>;
+export type ConferenceMeetingImportPreview = z.infer<typeof conferenceMeetingImportPreviewSchema>;
+export type ConferenceMeetingImportResult = z.infer<typeof conferenceMeetingImportResultSchema>;
 export type SearchQuery = z.infer<typeof searchQuerySchema>;
 export type DashboardResponse = z.infer<typeof dashboardSchema>;
 export type SearchResult = z.infer<typeof searchResultSchema>;

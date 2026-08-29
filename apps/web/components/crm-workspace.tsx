@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowRight,
   Building2,
+  CalendarDays,
   Check,
   CircleDollarSign,
   ClipboardCheck,
@@ -27,6 +28,13 @@ import type {
   AppendNoteInput,
   AccountImportPreview,
   ContactImportPreview,
+  ConferenceCompanyImportPreview,
+  ConferenceMeetingImportPreview,
+  ConferencePersonImportPreview,
+  CreateConferenceCompanyInput,
+  CreateConferenceInput,
+  CreateConferenceMeetingInput,
+  CreateConferencePersonInput,
   CreateActivityInput,
   CreateTaskInput,
   CreateCustomFieldDefinitionInput,
@@ -36,12 +44,25 @@ import type {
   OpportunityImportPreview,
   SearchResult,
   UpdateActivityInput,
+  UpdateConferenceCompanyInput,
+  UpdateConferencePersonInput,
   UpdateNoteInput,
   UpdateTaskInput
 } from "@clientloop/contracts";
 import type {
   Account,
   Activity as CRMActivity,
+  Conference,
+  ConferenceCompany,
+  ConferenceIcpCategory,
+  ConferenceMeeting,
+  ConferenceMeetingStatus,
+  ConferenceOptOutStatus,
+  ConferenceOutreachStatus,
+  ConferencePerson,
+  ConferencePriorityBand,
+  ConferenceRole,
+  ConferenceSourceType,
   Contact,
   CustomFieldDefinition,
   CustomFieldPrimitive,
@@ -85,7 +106,68 @@ import {
   type TimelinePermissions
 } from "../lib/session-permissions";
 
-type ViewMode = "pipeline" | "leads" | "accounts" | "contacts" | "data";
+type ViewMode = "pipeline" | "leads" | "network" | "accounts" | "contacts" | "conferences" | "data";
+type ConferenceTab = "companies" | "people" | "meetings" | "queries" | "templates" | "access";
+type ConferenceCompanyPatch = Omit<UpdateConferenceCompanyInput, "expectedVersion">;
+type ConferencePersonPatch = Omit<UpdateConferencePersonInput, "expectedVersion">;
+type ConferenceCompanyScoreFilter = "all" | "8" | "12" | "16";
+type ConferenceSignalFilter = "all" | "has_signal" | "strong_signal";
+type ConferenceCreateDraft = {
+  name: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  website: string;
+  audienceType: string;
+  organizerContact: string;
+  sponsorPackageLink: string;
+  appName: string;
+  sourceNotes: string;
+};
+type ConferenceCompanyDraft = {
+  company: string;
+  website: string;
+  conferenceRole: ConferenceRole;
+  sector: string;
+  companyScore: string;
+  sourceUrl: string;
+  sourceNotes: string;
+  rwaRelevance: boolean;
+  privateMarketsRelevance: boolean;
+  fundraisingRelevance: boolean;
+  marketEntryRelevance: boolean;
+  partnershipRelevance: boolean;
+};
+type ConferencePersonDraft = {
+  name: string;
+  title: string;
+  conferenceCompanyId: string;
+  linkedIn: string;
+  email: string;
+  conferenceSignal: string;
+  icpCategory: ConferenceIcpCategory;
+  buyingSignal: string;
+  relationshipPath: string;
+  sourceType: ConferenceSourceType;
+  source: string;
+  lawfulBasisNotes: string;
+  optOutStatus: ConferenceOptOutStatus;
+  seniorityScore: string;
+  companyFitScore: string;
+  signalScore: string;
+  conferenceSignalScore: string;
+  warmIntroScore: string;
+  timingScore: string;
+};
+type ConferenceMeetingDraft = {
+  conferencePersonId: string;
+  reasonToMeet: string;
+  proposedAsk: string;
+  introPath: string;
+  status: ConferenceMeetingStatus;
+  notes: string;
+  nextStep: string;
+};
 type CustomFieldDraft = {
   entityType: RecordEntityType;
   label: string;
@@ -151,6 +233,82 @@ const accountCsvPlaceholder = `name,domain,status
 Acme Systems,acme.example,prospect`;
 const opportunityCsvPlaceholder = `name,accountId,ownerUserId,stage,amount,currency,probabilityPct
 Expansion deal,00000000-0000-4000-8000-000000001001,00000000-0000-4000-8000-000000000101,qualification,25000,USD,20`;
+const conferenceCsvTemplate = `Conference name,Date,Location,Website,Audience type,Organizer contact,Sponsor package link,App name,Attendee access available,Source notes
+Digital Assets Summit,2026-06-18,New York NY,https://example.com/digital-assets-summit,Institutional digital assets and private markets,sponsors@example.com,https://example.com/sponsors,Summit Connect,opt_in_directory,Official conference page and sponsor package`;
+const conferenceCompanyCsvTemplate = `Company,Website,Conference role,Sector,RWA relevance,Private markets relevance,Fundraising relevance,Market entry relevance,Partnership relevance,Company score,Source URL
+Harbor Finance,https://harbor.example,sponsor,Private markets infrastructure,true,true,false,true,true,17,https://example.com/sponsors`;
+const conferencePersonCsvTemplate = `Name,Title,Company,LinkedIn,Email,Conference signal,ICP category,Buying signal,Relationship path,Outreach status,Source type,Source,Lawful basis notes,Opt out status,Seniority score,Company fit score,Signal score,Conference signal score,Warm intro score,Timing score
+Avery Stone,Head of Partnerships,Harbor Finance,https://linkedin.com/in/avery-stone-example,,Sponsor panel,strategic_partner,Partnership expansion,Ask Morgan,not_started,speaker_agenda,Agenda page,No email stored,not_opted_out,4,4,5,3,1,2`;
+const conferenceMeetingCsvTemplate = `Name,Company,Reason to meet,Proposed ask,Intro path,Meeting requested,Meeting booked,Notes,Next step
+Avery Stone,Harbor Finance,Compare notes on tokenized private market distribution partnerships,15-minute meeting during the summit,Morgan manager warm intro,yes,false,Prioritize before conference week,Request intro`;
+const conferenceCompanyCsvPlaceholder = conferenceCompanyCsvTemplate;
+const conferencePersonCsvPlaceholder = conferencePersonCsvTemplate;
+const conferenceMeetingCsvPlaceholder = conferenceMeetingCsvTemplate;
+
+const conferenceRoles: ConferenceRole[] = [
+  "speaker",
+  "moderator",
+  "sponsor",
+  "exhibitor",
+  "startup_showcase",
+  "award_finalist",
+  "side_event_host",
+  "attendee",
+  "organizer",
+  "partner",
+  "other"
+];
+const conferenceIcpCategories: ConferenceIcpCategory[] = [
+  "founder_operator",
+  "asset_owner",
+  "private_markets",
+  "fintech_digital_assets",
+  "investor_allocator",
+  "strategic_partner",
+  "lower_priority",
+  "unknown"
+];
+const conferenceSourceTypes: ConferenceSourceType[] = [
+  "official_directory",
+  "sponsor_access",
+  "speaker_agenda",
+  "sponsor_exhibitor_list",
+  "startup_showcase",
+  "linkedin_public",
+  "side_event_rsvp",
+  "warm_network",
+  "press_release",
+  "manual_research"
+];
+const conferenceMeetingStatuses: ConferenceMeetingStatus[] = [
+  "not_requested",
+  "requested",
+  "booked",
+  "declined",
+  "completed",
+  "cancelled"
+];
+const conferenceOutreachStatuses: ConferenceOutreachStatus[] = [
+  "not_started",
+  "queued",
+  "contacted",
+  "replied",
+  "meeting_requested",
+  "meeting_booked",
+  "nurturing",
+  "disqualified"
+];
+const conferencePriorityBands: ConferencePriorityBand[] = [
+  "request_meeting",
+  "personalized_outreach",
+  "nurture",
+  "do_not_prioritize"
+];
+const conferenceOptOutStatuses: ConferenceOptOutStatus[] = [
+  "unknown",
+  "not_opted_out",
+  "opted_out"
+];
 
 export function CRMWorkspace({ initialDashboard }: { initialDashboard: DashboardResponse }) {
   const router = useRouter();
@@ -185,6 +343,44 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const [opportunities, setOpportunities] = useState<Opportunity[]>(
     initialDashboard.opportunities
   );
+  const [conferences, setConferences] = useState<Conference[]>(initialDashboard.conferences);
+  const [conferenceCompanies, setConferenceCompanies] = useState<ConferenceCompany[]>(
+    initialDashboard.conferenceCompanies
+  );
+  const [conferencePeople, setConferencePeople] = useState<ConferencePerson[]>(
+    initialDashboard.conferencePeople
+  );
+  const [conferenceMeetings, setConferenceMeetings] = useState<ConferenceMeeting[]>(
+    initialDashboard.conferenceMeetings
+  );
+  const [selectedConferenceId, setSelectedConferenceId] = useState(
+    initialDashboard.conferences[0]?.id ?? ""
+  );
+  const [conferenceTab, setConferenceTab] = useState<ConferenceTab>("companies");
+  const [conferenceCreateOpen, setConferenceCreateOpen] = useState(false);
+  const [conferenceCreateDraft, setConferenceCreateDraft] = useState<ConferenceCreateDraft>(() =>
+    emptyConferenceCreateDraft()
+  );
+  const [conferenceCompanyDraft, setConferenceCompanyDraft] = useState<ConferenceCompanyDraft>(() =>
+    emptyConferenceCompanyDraft()
+  );
+  const [conferencePersonDraft, setConferencePersonDraft] = useState<ConferencePersonDraft>(() =>
+    emptyConferencePersonDraft()
+  );
+  const [conferenceMeetingDraft, setConferenceMeetingDraft] = useState<ConferenceMeetingDraft>(() =>
+    emptyConferenceMeetingDraft()
+  );
+  const [conferenceCompanyCsv, setConferenceCompanyCsv] = useState("");
+  const [conferencePersonCsv, setConferencePersonCsv] = useState("");
+  const [conferenceMeetingCsv, setConferenceMeetingCsv] = useState("");
+  const [conferenceCompanyImportPreview, setConferenceCompanyImportPreview] =
+    useState<ConferenceCompanyImportPreview | null>(null);
+  const [conferencePersonImportPreview, setConferencePersonImportPreview] =
+    useState<ConferencePersonImportPreview | null>(null);
+  const [conferenceMeetingImportPreview, setConferenceMeetingImportPreview] =
+    useState<ConferenceMeetingImportPreview | null>(null);
+  const [conferenceBusy, setConferenceBusy] = useState(false);
+  const [conferenceMessage, setConferenceMessage] = useState("");
   const [contacts, setContacts] = useState<Contact[]>(initialDashboard.contacts);
   const [tasks, setTasks] = useState<Task[]>(initialDashboard.tasks);
   const [notes, setNotes] = useState<Note[]>(initialDashboard.notes);
@@ -350,6 +546,15 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     setAccounts(dashboard.accounts);
     setLeads(dashboard.leads);
     setOpportunities(dashboard.opportunities);
+    setConferences(dashboard.conferences);
+    setConferenceCompanies(dashboard.conferenceCompanies);
+    setConferencePeople(dashboard.conferencePeople);
+    setConferenceMeetings(dashboard.conferenceMeetings);
+    setSelectedConferenceId((current) =>
+      dashboard.conferences.some((conference) => conference.id === current)
+        ? current
+        : dashboard.conferences[0]?.id ?? ""
+    );
     setContacts(dashboard.contacts);
     setTasks(dashboard.tasks);
     setNotes(dashboard.notes);
@@ -384,6 +589,16 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const contactsById = useMemo(
     () => new Map(contacts.map((contact) => [contact.id, contact])),
     [contacts]
+  );
+
+  const conferenceCompaniesById = useMemo(
+    () => new Map(conferenceCompanies.map((company) => [company.id, company])),
+    [conferenceCompanies]
+  );
+
+  const conferencePeopleById = useMemo(
+    () => new Map(conferencePeople.map((person) => [person.id, person])),
+    [conferencePeople]
   );
 
   const customFieldsByEntity = useMemo(() => {
@@ -460,6 +675,23 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       ),
     [customFieldsByEntity, leads, normalizedQuery]
   );
+  const filteredSalesLeads = useMemo(
+    () => filteredLeads.filter((lead) => !isLinkedInProspectLead(lead)),
+    [filteredLeads]
+  );
+  const filteredNetworkLeads = useMemo(
+    () => filteredLeads.filter((lead) => isLinkedInProspectLead(lead)),
+    [filteredLeads]
+  );
+  const highPriorityNetworkLeads = useMemo(
+    () =>
+      leads.filter(
+        (lead) =>
+          isLinkedInProspectLead(lead) &&
+          leadCustomFieldString(lead, "linkedin_priority") === "High"
+      ),
+    [leads]
+  );
 
   const filteredContacts = useMemo(
     () =>
@@ -474,6 +706,37 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     [contacts, customFieldsByEntity, normalizedQuery]
   );
 
+  const selectedConference = useMemo(
+    () =>
+      conferences.find((conference) => conference.id === selectedConferenceId) ??
+      conferences[0] ??
+      null,
+    [conferences, selectedConferenceId]
+  );
+  const selectedConferenceCompanies = useMemo(
+    () =>
+      selectedConference
+        ? conferenceCompanies.filter((company) => company.conferenceId === selectedConference.id)
+        : [],
+    [conferenceCompanies, selectedConference]
+  );
+  const selectedConferencePeople = useMemo(
+    () =>
+      selectedConference
+        ? conferencePeople
+            .filter((person) => person.conferenceId === selectedConference.id)
+            .sort((left, right) => right.totalScore - left.totalScore)
+        : [],
+    [conferencePeople, selectedConference]
+  );
+  const selectedConferenceMeetings = useMemo(
+    () =>
+      selectedConference
+        ? conferenceMeetings.filter((meeting) => meeting.conferenceId === selectedConference.id)
+        : [],
+    [conferenceMeetings, selectedConference]
+  );
+
   const pipelineValue = opportunities.reduce(
     (sum, opportunity) =>
       opportunity.stage === "closed_lost"
@@ -485,7 +748,15 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   const activeAccounts = accounts.filter(
     (account) => account.status !== "inactive"
   );
-  const openLeads = leads.filter((lead) => lead.status !== "converted" && lead.status !== "disqualified");
+  const openLeads = leads.filter(
+    (lead) =>
+      !isLinkedInProspectLead(lead) &&
+      lead.status !== "converted" &&
+      lead.status !== "disqualified"
+  );
+  const highPriorityConferencePeople = conferencePeople.filter(
+    (person) => person.priorityBand === "request_meeting"
+  );
   const sessionDisplayName = !apiBaseUrl
     ? "Local demo"
     : session?.user.displayName ?? (sessionError ? "Unavailable" : "Connecting");
@@ -648,6 +919,17 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     changeViewMode("pipeline");
   }, [changeViewMode, createPermissions.canCreateOpportunities]);
 
+  const openConferenceCreate = useCallback(() => {
+    if (!createPermissions.canCreateConferences) {
+      setToolbarMessage("Conference creation is not permitted");
+      return;
+    }
+
+    setConferenceCreateOpen(true);
+    setConferenceMessage("");
+    changeViewMode("conferences");
+  }, [changeViewMode, createPermissions.canCreateConferences]);
+
   const openContextualCreate = useCallback(() => {
     if (viewMode === "pipeline") {
       openOpportunityCreate();
@@ -669,8 +951,20 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
       return;
     }
 
+    if (viewMode === "conferences") {
+      openConferenceCreate();
+      return;
+    }
+
     setToolbarMessage("No create action is available in this view");
-  }, [openAccountCreate, openContactCreate, openLeadCreate, openOpportunityCreate, viewMode]);
+  }, [
+    openAccountCreate,
+    openConferenceCreate,
+    openContactCreate,
+    openLeadCreate,
+    openOpportunityCreate,
+    viewMode
+  ]);
 
   useEffect(() => {
     void ensureSession();
@@ -1216,6 +1510,804 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     }
   }
 
+  async function createConferenceFromToolbar() {
+    if (!createPermissions.canCreateConferences) {
+      setConferenceMessage("Conference creation is not permitted");
+      return;
+    }
+
+    const input = conferenceCreateInput(conferenceCreateDraft);
+    if (!input || conferenceBusy) {
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      let conference: Conference;
+      if (!apiBaseUrl) {
+        const now = new Date().toISOString();
+        conference = {
+          id: crypto.randomUUID(),
+          ...input,
+          endDate: input.endDate ?? null,
+          location: input.location ?? null,
+          website: input.website ?? null,
+          audienceType: input.audienceType ?? null,
+          organizerContact: input.organizerContact ?? null,
+          sponsorPackageLink: input.sponsorPackageLink ?? null,
+          appName: input.appName ?? null,
+          sourceNotes: input.sourceNotes ?? null,
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        conference = await client.createConference(input);
+      }
+
+      setConferences((current) => [conference, ...current]);
+      setSelectedConferenceId(conference.id);
+      setConferenceCreateDraft(emptyConferenceCreateDraft());
+      setConferenceCreateOpen(false);
+      setConferenceMessage(`Created ${conference.name}`);
+      changeViewMode("conferences");
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function createConferenceCompanyFromForm() {
+    if (!selectedConference || conferenceBusy) {
+      return;
+    }
+
+    const input = conferenceCompanyInput(conferenceCompanyDraft);
+    if (!input) {
+      setConferenceMessage("Company is required");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      let company: ConferenceCompany;
+      if (!apiBaseUrl) {
+        const now = new Date().toISOString();
+        company = {
+          id: crypto.randomUUID(),
+          conferenceId: selectedConference.id,
+          accountId: null,
+          ...input,
+          website: input.website ?? null,
+          sector: input.sector ?? null,
+          sourceUrl: input.sourceUrl ?? null,
+          sourceNotes: input.sourceNotes ?? null,
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        company = await client.createConferenceCompany(selectedConference.id, input);
+      }
+
+      setConferenceCompanies((current) => [company, ...current]);
+      setConferenceCompanyDraft(emptyConferenceCompanyDraft());
+      setConferenceMessage(`Added ${company.company}`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function updateConferenceCompanyRecord(
+    company: ConferenceCompany,
+    patch: ConferenceCompanyPatch
+  ) {
+    let updated: ConferenceCompany;
+    if (!apiBaseUrl) {
+      updated = {
+        ...company,
+        ...patch,
+        accountId: patch.accountId === undefined ? company.accountId : patch.accountId,
+        company: patch.company ?? company.company,
+        website: patch.website === undefined ? company.website : patch.website,
+        conferenceRole: patch.conferenceRole ?? company.conferenceRole,
+        sector: patch.sector === undefined ? company.sector : patch.sector,
+        rwaRelevance: patch.rwaRelevance ?? company.rwaRelevance,
+        privateMarketsRelevance: patch.privateMarketsRelevance ?? company.privateMarketsRelevance,
+        fundraisingRelevance: patch.fundraisingRelevance ?? company.fundraisingRelevance,
+        marketEntryRelevance: patch.marketEntryRelevance ?? company.marketEntryRelevance,
+        partnershipRelevance: patch.partnershipRelevance ?? company.partnershipRelevance,
+        companyScore: patch.companyScore ?? company.companyScore,
+        sourceUrl: patch.sourceUrl === undefined ? company.sourceUrl : patch.sourceUrl,
+        sourceNotes: patch.sourceNotes === undefined ? company.sourceNotes : patch.sourceNotes,
+        updatedAt: new Date().toISOString(),
+        updatedBy: session?.user.id ?? seedManagerId,
+        version: company.version + 1
+      };
+    } else {
+      const client = await authenticatedClient();
+      if (!client) {
+        throw new Error("Session is unavailable");
+      }
+      updated = await client.updateConferenceCompany(company.id, {
+        expectedVersion: company.version,
+        ...patch
+      });
+    }
+
+    setConferenceCompanies((current) =>
+      current.map((candidate) => (candidate.id === updated.id ? updated : candidate))
+    );
+    return updated;
+  }
+
+  async function ensureConferenceCompanyAccount(company: ConferenceCompany) {
+    if (company.accountId) {
+      return accountsById.get(company.accountId) ?? null;
+    }
+
+    if (!createPermissions.canCreateAccounts) {
+      throw new Error("Account creation is not permitted");
+    }
+
+    const now = new Date().toISOString();
+    let account: Account;
+    const input = {
+      name: company.company,
+      domain: domainFromUrl(company.website ?? company.sourceUrl ?? undefined),
+      status: "prospect" as const,
+      customFields: {}
+    };
+
+    if (!apiBaseUrl) {
+      account = {
+        id: crypto.randomUUID(),
+        ...input,
+        ownerUserId: session?.user.id ?? seedManagerId,
+        tenantId: seedTenantId,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: seedManagerId,
+        updatedBy: seedManagerId,
+        version: 1,
+        archivedAt: null
+      };
+    } else {
+      const client = await authenticatedClient();
+      if (!client) {
+        throw new Error("Session is unavailable");
+      }
+      account = await client.createAccount(input);
+    }
+
+    setAccounts((current) => [account, ...current]);
+    await updateConferenceCompanyRecord(company, { accountId: account.id });
+    return account;
+  }
+
+  async function createAccountFromConferenceCompany(company: ConferenceCompany) {
+    if (conferenceBusy) {
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      const account = await ensureConferenceCompanyAccount(company);
+      setConferenceMessage(account ? `Linked ${company.company} to ${account.name}` : "Account is already linked");
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function createContactFromConferencePerson(person: ConferencePerson) {
+    if (conferenceBusy) {
+      return;
+    }
+
+    if (person.contactId) {
+      setConferenceMessage("Conference person is already linked to a contact");
+      return;
+    }
+
+    if (!createPermissions.canCreateContacts) {
+      setConferenceMessage("Contact creation is not permitted");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      const linkedCompany = person.conferenceCompanyId
+        ? conferenceCompaniesById.get(person.conferenceCompanyId)
+        : null;
+      const account = person.accountId
+        ? accountsById.get(person.accountId) ?? null
+        : linkedCompany
+          ? await ensureConferenceCompanyAccount(linkedCompany)
+          : null;
+      const name = splitPersonName(person.name);
+      const now = new Date().toISOString();
+      let contact: Contact;
+      const input = {
+        accountId: account?.id,
+        firstName: name.firstName,
+        lastName: name.lastName,
+        email: person.email ?? undefined,
+        ownerUserId: session?.user.id ?? seedManagerId,
+        customFields: {}
+      };
+
+      if (!apiBaseUrl) {
+        contact = {
+          id: crypto.randomUUID(),
+          accountId: input.accountId ?? null,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          email: input.email ?? null,
+          phone: null,
+          ownerUserId: input.ownerUserId,
+          customFields: {},
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        contact = await client.createContact(input);
+      }
+
+      setContacts((current) => [contact, ...current]);
+      await updateConferencePersonRecord(person, {
+        accountId: account?.id ?? person.accountId ?? null,
+        contactId: contact.id
+      });
+      setConferenceMessage(`Created contact ${contact.firstName} ${contact.lastName}`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function createConferencePersonFromForm() {
+    if (!selectedConference || conferenceBusy) {
+      return;
+    }
+
+    const input = conferencePersonInput(conferencePersonDraft);
+    if (!input) {
+      setConferenceMessage(
+        conferencePersonDraft.email.trim() && !conferencePersonDraft.lawfulBasisNotes.trim()
+          ? "Lawful basis notes are required when email is stored"
+          : "Name and title are required"
+      );
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      let person: ConferencePerson;
+      if (!apiBaseUrl) {
+        const now = new Date().toISOString();
+        const totalScore = conferenceTotalScore(input);
+        person = {
+          id: crypto.randomUUID(),
+          conferenceId: selectedConference.id,
+          conferenceCompanyId: input.conferenceCompanyId ?? null,
+          accountId: null,
+          contactId: null,
+          ...input,
+          linkedIn: input.linkedIn ?? null,
+          email: input.email ?? null,
+          conferenceSignal: input.conferenceSignal ?? null,
+          buyingSignal: input.buyingSignal ?? null,
+          relationshipPath: input.relationshipPath ?? null,
+          source: input.source ?? null,
+          lawfulBasisNotes: input.lawfulBasisNotes ?? null,
+          outreachStatus: "not_started",
+          totalScore,
+          priorityBand: conferencePriorityBand(totalScore),
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        person = await client.createConferencePerson(selectedConference.id, input);
+      }
+
+      setConferencePeople((current) => [person, ...current]);
+      setConferencePersonDraft(emptyConferencePersonDraft());
+      setConferenceMessage(`Added ${person.name}`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function createConferenceMeetingFromForm() {
+    if (!selectedConference || conferenceBusy) {
+      return;
+    }
+
+    const input = conferenceMeetingInput(conferenceMeetingDraft);
+    if (!input) {
+      setConferenceMessage("Meeting person and reason are required");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      let meeting: ConferenceMeeting;
+      if (!apiBaseUrl) {
+        const now = new Date().toISOString();
+        meeting = {
+          id: crypto.randomUUID(),
+          conferenceId: selectedConference.id,
+          ...input,
+          proposedAsk: input.proposedAsk ?? null,
+          introPath: input.introPath ?? null,
+          notes: input.notes ?? null,
+          nextStep: input.nextStep ?? null,
+          tenantId: seedTenantId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: seedManagerId,
+          updatedBy: seedManagerId,
+          version: 1,
+          archivedAt: null
+        };
+      } else {
+        const client = await authenticatedClient();
+        if (!client) {
+          throw new Error("Session is unavailable");
+        }
+        meeting = await client.createConferenceMeeting(selectedConference.id, input);
+      }
+
+      setConferenceMeetings((current) => [meeting, ...current]);
+      setConferenceMeetingDraft(emptyConferenceMeetingDraft());
+      setConferenceMessage("Meeting plan added");
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function updateConferencePersonRecord(
+    person: ConferencePerson,
+    patch: ConferencePersonPatch
+  ) {
+    if (
+      person.optOutStatus === "opted_out" &&
+      patch.outreachStatus &&
+      outreachStatusRequiresPermission(patch.outreachStatus)
+    ) {
+      throw new Error("Opted-out people cannot be added to outreach actions");
+    }
+
+    let updated: ConferencePerson;
+    if (!apiBaseUrl) {
+      const seniorityScore = patch.seniorityScore ?? person.seniorityScore;
+      const companyFitScore = patch.companyFitScore ?? person.companyFitScore;
+      const signalScore = patch.signalScore ?? person.signalScore;
+      const conferenceSignalScore = patch.conferenceSignalScore ?? person.conferenceSignalScore;
+      const warmIntroScore = patch.warmIntroScore ?? person.warmIntroScore;
+      const timingScore = patch.timingScore ?? person.timingScore;
+      const totalScore = conferenceTotalScore({
+        seniorityScore,
+        companyFitScore,
+        signalScore,
+        conferenceSignalScore,
+        warmIntroScore,
+        timingScore
+      });
+
+      updated = {
+        ...person,
+        ...patch,
+        conferenceCompanyId:
+          patch.conferenceCompanyId === undefined
+            ? person.conferenceCompanyId
+            : patch.conferenceCompanyId,
+        accountId: patch.accountId === undefined ? person.accountId : patch.accountId,
+        contactId: patch.contactId === undefined ? person.contactId : patch.contactId,
+        name: patch.name ?? person.name,
+        title: patch.title ?? person.title,
+        linkedIn: patch.linkedIn === undefined ? person.linkedIn : patch.linkedIn,
+        email: patch.email === undefined ? person.email : patch.email,
+        conferenceSignal:
+          patch.conferenceSignal === undefined
+            ? person.conferenceSignal
+            : patch.conferenceSignal,
+        icpCategory: patch.icpCategory ?? person.icpCategory,
+        buyingSignal:
+          patch.buyingSignal === undefined ? person.buyingSignal : patch.buyingSignal,
+        relationshipPath:
+          patch.relationshipPath === undefined ? person.relationshipPath : patch.relationshipPath,
+        outreachStatus: patch.outreachStatus ?? person.outreachStatus,
+        sourceType: patch.sourceType ?? person.sourceType,
+        source: patch.source === undefined ? person.source : patch.source,
+        lawfulBasisNotes:
+          patch.lawfulBasisNotes === undefined
+            ? person.lawfulBasisNotes
+            : patch.lawfulBasisNotes,
+        optOutStatus: patch.optOutStatus ?? person.optOutStatus,
+        seniorityScore,
+        companyFitScore,
+        signalScore,
+        conferenceSignalScore,
+        warmIntroScore,
+        timingScore,
+        totalScore,
+        priorityBand: conferencePriorityBand(totalScore),
+        updatedAt: new Date().toISOString(),
+        updatedBy: session?.user.id ?? seedManagerId,
+        version: person.version + 1
+      };
+    } else {
+      const client = await authenticatedClient();
+      if (!client) {
+        throw new Error("Session is unavailable");
+      }
+      updated = await client.updateConferencePerson(person.id, {
+        expectedVersion: person.version,
+        ...patch
+      });
+    }
+
+    setConferencePeople((current) =>
+      current.map((candidate) => (candidate.id === updated.id ? updated : candidate))
+    );
+    return updated;
+  }
+
+  async function createConferenceFollowUpTask(person: ConferencePerson) {
+    await createConferenceFollowUpTasks([person]);
+  }
+
+  async function createConferenceFollowUpTasks(peopleToUpdate: ConferencePerson[]) {
+    if (conferenceBusy) {
+      return;
+    }
+
+    if (peopleToUpdate.length === 0) {
+      setConferenceMessage("Select at least one conference person");
+      return;
+    }
+
+    const eligiblePeople = peopleToUpdate.filter((person) => person.optOutStatus !== "opted_out");
+    const skippedCount = peopleToUpdate.length - eligiblePeople.length;
+
+    if (eligiblePeople.length === 0) {
+      setConferenceMessage("Opted-out people cannot be added to outreach actions");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      for (const person of eligiblePeople) {
+        await createFollowUpTask({
+          parent: { type: "conference_person", id: person.id },
+          title: `Request meeting with ${person.name}`,
+          description: [person.title, person.buyingSignal, person.relationshipPath].filter(Boolean).join("\n"),
+          priority: person.priorityBand === "request_meeting" ? "high" : "medium",
+          assignedUserId: session?.user.id ?? seedManagerId
+        });
+      }
+      setConferenceMessage(
+        skippedCount > 0
+          ? `Created ${eligiblePeople.length} tasks; skipped ${skippedCount} opted-out people`
+          : `Created ${eligiblePeople.length} tasks`
+      );
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function bulkSetConferenceOutreachStatus(
+    peopleToUpdate: ConferencePerson[],
+    outreachStatus: ConferenceOutreachStatus
+  ) {
+    if (conferenceBusy) {
+      return;
+    }
+
+    if (peopleToUpdate.length === 0) {
+      setConferenceMessage("Select at least one conference person");
+      return;
+    }
+
+    const eligiblePeople = outreachStatusRequiresPermission(outreachStatus)
+      ? peopleToUpdate.filter((person) => person.optOutStatus !== "opted_out")
+      : peopleToUpdate;
+    const skippedCount = peopleToUpdate.length - eligiblePeople.length;
+
+    if (eligiblePeople.length === 0) {
+      setConferenceMessage("Opted-out people cannot be added to outreach actions");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      for (const person of eligiblePeople) {
+        await updateConferencePersonRecord(person, { outreachStatus });
+      }
+      setConferenceMessage(
+        skippedCount > 0
+          ? `Updated ${eligiblePeople.length} people; skipped ${skippedCount} opted-out people`
+          : `Updated ${eligiblePeople.length} people to ${formatLabel(outreachStatus)}`
+      );
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function bulkRequestConferenceMeetings(peopleToUpdate: ConferencePerson[]) {
+    await bulkSetConferenceOutreachStatus(peopleToUpdate, "meeting_requested");
+  }
+
+  async function bulkMarkConferencePeopleOptedOut(peopleToUpdate: ConferencePerson[]) {
+    if (conferenceBusy) {
+      return;
+    }
+
+    if (peopleToUpdate.length === 0) {
+      setConferenceMessage("Select at least one conference person");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      for (const person of peopleToUpdate) {
+        await updateConferencePersonRecord(person, {
+          optOutStatus: "opted_out",
+          outreachStatus: "disqualified"
+        });
+      }
+      setConferenceMessage(`Marked ${peopleToUpdate.length} people opted out`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function previewConferenceCompaniesCsv() {
+    if (!apiBaseUrl || !selectedConference) {
+      setConferenceMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportConferences) {
+      setConferenceMessage("Conference import preview is not permitted");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const preview = await client.previewConferenceCompanyImport(selectedConference.id, {
+        csv: conferenceCompanyCsv
+      });
+      setConferenceCompanyImportPreview(preview);
+      setConferenceMessage(`${preview.validRows} valid company rows from ${preview.totalRows}`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function importConferenceCompaniesCsv() {
+    if (!apiBaseUrl || !selectedConference) {
+      setConferenceMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportConferences) {
+      setConferenceMessage("Conference import is not permitted");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const result = await client.importConferenceCompanies(selectedConference.id, {
+        csv: conferenceCompanyCsv
+      });
+      setConferenceCompanies((current) => [...result.companies, ...current]);
+      setConferenceCompanyImportPreview(null);
+      setConferenceCompanyCsv("");
+      setConferenceMessage(`Imported ${result.importedCount} companies`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function previewConferencePeopleCsv() {
+    if (!apiBaseUrl || !selectedConference) {
+      setConferenceMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportConferences) {
+      setConferenceMessage("Conference import preview is not permitted");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const preview = await client.previewConferencePersonImport(selectedConference.id, {
+        csv: conferencePersonCsv
+      });
+      setConferencePersonImportPreview(preview);
+      setConferenceMessage(`${preview.validRows} valid people rows from ${preview.totalRows}`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function importConferencePeopleCsv() {
+    if (!apiBaseUrl || !selectedConference) {
+      setConferenceMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportConferences) {
+      setConferenceMessage("Conference import is not permitted");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const result = await client.importConferencePeople(selectedConference.id, {
+        csv: conferencePersonCsv
+      });
+      setConferencePeople((current) => [...result.people, ...current]);
+      setConferencePersonImportPreview(null);
+      setConferencePersonCsv("");
+      setConferenceMessage(`Imported ${result.importedCount} people`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function previewConferenceMeetingsCsv() {
+    if (!apiBaseUrl || !selectedConference) {
+      setConferenceMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportConferences) {
+      setConferenceMessage("Conference import preview is not permitted");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const preview = await client.previewConferenceMeetingImport(selectedConference.id, {
+        csv: conferenceMeetingCsv
+      });
+      setConferenceMeetingImportPreview(preview);
+      setConferenceMessage(`${preview.validRows} valid meeting rows from ${preview.totalRows}`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
+  async function importConferenceMeetingsCsv() {
+    if (!apiBaseUrl || !selectedConference) {
+      setConferenceMessage("API is not configured");
+      return;
+    }
+
+    if (!dataPermissions.canImportConferences) {
+      setConferenceMessage("Conference import is not permitted");
+      return;
+    }
+
+    setConferenceBusy(true);
+    setConferenceMessage("");
+    try {
+      const client = await authenticatedClient();
+      if (!client) {
+        return;
+      }
+      const result = await client.importConferenceMeetings(selectedConference.id, {
+        csv: conferenceMeetingCsv
+      });
+      setConferenceMeetings((current) => [...result.meetings, ...current]);
+      setConferenceMeetingImportPreview(null);
+      setConferenceMeetingCsv("");
+      setConferenceMessage(`Imported ${result.importedCount} meetings`);
+    } catch (error) {
+      setConferenceMessage(errorSummary(error));
+    } finally {
+      setConferenceBusy(false);
+    }
+  }
+
   async function convertLeadToOpportunity(lead: Lead) {
     if (!apiBaseUrl || lead.status === "converted" || lead.status === "disqualified") {
       return;
@@ -1618,6 +2710,41 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
   }
 
   function openSearchResult(result: SearchResult) {
+    if (result.type === "conference") {
+      setSelectedConferenceId(result.id);
+      setSearchResults([]);
+      setSearchError("");
+      setActiveSearchResultIndex(-1);
+      changeViewMode("conferences");
+      return;
+    }
+
+    if (result.type === "conference_company") {
+      const company = conferenceCompanies.find((candidate) => candidate.id === result.id);
+      if (company) {
+        setSelectedConferenceId(company.conferenceId);
+      }
+      setSearchResults([]);
+      setSearchError("");
+      setActiveSearchResultIndex(-1);
+      changeViewMode("conferences");
+      setConferenceTab("companies");
+      return;
+    }
+
+    if (result.type === "conference_person") {
+      const person = conferencePeople.find((candidate) => candidate.id === result.id);
+      if (person) {
+        setSelectedConferenceId(person.conferenceId);
+      }
+      setSearchResults([]);
+      setSearchError("");
+      setActiveSearchResultIndex(-1);
+      changeViewMode("conferences");
+      setConferenceTab("people");
+      return;
+    }
+
     if (!isRecordSearchResult(result)) {
       return;
     }
@@ -1625,7 +2752,11 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
     setSearchResults([]);
     setSearchError("");
     setActiveSearchResultIndex(-1);
-    openRecordDetail({ entityType: result.type, id: result.id }, viewForEntityType(result.type));
+    const leadResult =
+      result.type === "lead" ? leads.find((candidate) => candidate.id === result.id) : null;
+    const targetView =
+      leadResult && isLinkedInProspectLead(leadResult) ? "network" : viewForEntityType(result.type);
+    openRecordDetail({ entityType: result.type, id: result.id }, targetView);
   }
 
   function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -1688,6 +2819,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             <UserPlus size={18} /> Leads
           </button>
           <button
+            className={viewMode === "network" ? "active" : ""}
+            onClick={() => changeViewMode("network")}
+          >
+            <ClipboardCheck size={18} /> Network
+          </button>
+          <button
             className={viewMode === "accounts" ? "active" : ""}
             onClick={() => changeViewMode("accounts")}
           >
@@ -1698,6 +2835,12 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
             onClick={() => changeViewMode("contacts")}
           >
             <UserRound size={18} /> Contacts
+          </button>
+          <button
+            className={viewMode === "conferences" ? "active" : ""}
+            onClick={() => changeViewMode("conferences")}
+          >
+            <CalendarDays size={18} /> Conferences
           </button>
           <button
             className={viewMode === "data" ? "active" : ""}
@@ -1720,7 +2863,9 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
         <div className="sidebar-metrics">
           <Metric icon={<CircleDollarSign size={18} />} label="Weighted" value={formatCurrency(pipelineValue)} />
           <Metric icon={<UserPlus size={18} />} label="Open leads" value={String(openLeads.length)} />
+          <Metric icon={<ClipboardCheck size={18} />} label="Network" value={String(highPriorityNetworkLeads.length)} />
           <Metric icon={<Building2 size={18} />} label="Accounts" value={String(activeAccounts.length)} />
+          <Metric icon={<CalendarDays size={18} />} label="Priority" value={String(highPriorityConferencePeople.length)} />
           <Metric icon={<ClipboardCheck size={18} />} label="Open tasks" value={String(openTasks.length)} />
         </div>
       </aside>
@@ -1845,7 +2990,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                 ) : null}
                 <LeadsView
                   convertingLeadId={convertingLeadId}
-                  leads={filteredLeads}
+                  leads={filteredSalesLeads}
                   message={leadMessage}
                   onConvert={convertLeadToOpportunity}
                   onOpenRecord={(lead) =>
@@ -1853,6 +2998,16 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                   }
                 />
               </>
+            ) : null}
+
+            {viewMode === "network" ? (
+              <NetworkProspectingView
+                leads={filteredNetworkLeads}
+                tasks={tasks}
+                onOpenRecord={(lead) =>
+                  openRecordDetail({ entityType: "lead", id: lead.id }, "network")
+                }
+              />
             ) : null}
 
             {viewMode === "accounts" ? (
@@ -1904,6 +3059,73 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
                   onOpenRecord={(contact) =>
                     openRecordDetail({ entityType: "contact", id: contact.id }, "contacts")
                   }
+                />
+              </>
+            ) : null}
+
+            {viewMode === "conferences" ? (
+              <>
+                {conferenceCreateOpen ? (
+                  <ConferenceCreateForm
+                    busy={conferenceBusy}
+                    draft={conferenceCreateDraft}
+                    onCancel={() => {
+                      setConferenceCreateOpen(false);
+                      setConferenceCreateDraft(emptyConferenceCreateDraft());
+                    }}
+                    onChange={setConferenceCreateDraft}
+                    onSubmit={createConferenceFromToolbar}
+                  />
+                ) : null}
+                <ConferencesView
+                  accountsById={accountsById}
+                  busy={conferenceBusy}
+                  companyDraft={conferenceCompanyDraft}
+                  companyImportPreview={conferenceCompanyImportPreview}
+                  companyCsv={conferenceCompanyCsv}
+                  companyCsvPlaceholder={conferenceCompanyCsvPlaceholder}
+                  companies={selectedConferenceCompanies}
+                  conferencePeopleById={conferencePeopleById}
+                  conferences={conferences}
+                  currentTab={conferenceTab}
+                  dataPermissions={dataPermissions}
+                  meetingCsv={conferenceMeetingCsv}
+                  meetingCsvPlaceholder={conferenceMeetingCsvPlaceholder}
+                  meetingDraft={conferenceMeetingDraft}
+                  meetingImportPreview={conferenceMeetingImportPreview}
+                  meetings={selectedConferenceMeetings}
+                  message={conferenceMessage}
+                  people={selectedConferencePeople}
+                  personDraft={conferencePersonDraft}
+                  personImportPreview={conferencePersonImportPreview}
+                  personCsv={conferencePersonCsv}
+                  personCsvPlaceholder={conferencePersonCsvPlaceholder}
+                  selectedConference={selectedConference}
+                  selectedConferenceId={selectedConference?.id ?? selectedConferenceId}
+                  onCompanyCsvChange={setConferenceCompanyCsv}
+                  onCompanyDraftChange={setConferenceCompanyDraft}
+                  onCreateCompany={createConferenceCompanyFromForm}
+                  onCreateMeeting={createConferenceMeetingFromForm}
+                  onCreatePerson={createConferencePersonFromForm}
+                  onCreateAccountFromCompany={createAccountFromConferenceCompany}
+                  onCreateContactFromPerson={createContactFromConferencePerson}
+                  onCreateTask={createConferenceFollowUpTask}
+                  onBulkCreateTasks={createConferenceFollowUpTasks}
+                  onBulkMarkOptOut={bulkMarkConferencePeopleOptedOut}
+                  onBulkRequestMeetings={bulkRequestConferenceMeetings}
+                  onBulkSetOutreachStatus={bulkSetConferenceOutreachStatus}
+                  onImportCompanies={importConferenceCompaniesCsv}
+                  onImportMeetings={importConferenceMeetingsCsv}
+                  onImportPeople={importConferencePeopleCsv}
+                  onMeetingDraftChange={setConferenceMeetingDraft}
+                  onMeetingCsvChange={setConferenceMeetingCsv}
+                  onPersonCsvChange={setConferencePersonCsv}
+                  onPersonDraftChange={setConferencePersonDraft}
+                  onPreviewCompanies={previewConferenceCompaniesCsv}
+                  onPreviewMeetings={previewConferenceMeetingsCsv}
+                  onPreviewPeople={previewConferencePeopleCsv}
+                  onSelectConference={setSelectedConferenceId}
+                  onTabChange={setConferenceTab}
                 />
               </>
             ) : null}
@@ -1973,6 +3195,7 @@ export function CRMWorkspace({ initialDashboard }: { initialDashboard: Dashboard
               tasks={tasks}
               accountsById={accountsById}
               contactsById={contactsById}
+              conferencePeopleById={conferencePeopleById}
               currentUserId={session?.user.id ?? seedManagerId}
               dueFilter={taskDueFilter}
               leads={leads}
@@ -2192,6 +3415,181 @@ function LeadsView({
       </div>
       {message ? <p className="data-message">{message}</p> : null}
     </>
+  );
+}
+
+function NetworkProspectingView({
+  leads,
+  tasks,
+  onOpenRecord
+}: {
+  leads: Lead[];
+  tasks: Task[];
+  onOpenRecord: (lead: Lead) => void;
+}) {
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [reviewStatusFilter, setReviewStatusFilter] = useState("all");
+  const priorityOptions = useMemo(
+    () => uniqueSorted(leads.map((lead) => leadCustomFieldString(lead, "linkedin_priority"))),
+    [leads]
+  );
+  const reviewStatusOptions = useMemo(
+    () => uniqueSorted(leads.map((lead) => leadCustomFieldString(lead, "linkedin_review_status"))),
+    [leads]
+  );
+  const visibleLeads = useMemo(
+    () =>
+      leads.filter((lead) => {
+        const priority = leadCustomFieldString(lead, "linkedin_priority");
+        const reviewStatus = leadCustomFieldString(lead, "linkedin_review_status");
+        const matchesPriority = priorityFilter === "all" || priority === priorityFilter;
+        const matchesReview =
+          reviewStatusFilter === "all" || reviewStatus === reviewStatusFilter;
+        return matchesPriority && matchesReview;
+      }),
+    [leads, priorityFilter, reviewStatusFilter]
+  );
+  const leadIds = useMemo(() => new Set(leads.map((lead) => lead.id)), [leads]);
+  const followUpTasks = tasks.filter(
+    (task) => task.parent?.type === "lead" && leadIds.has(task.parent.id)
+  );
+  const pendingInvites = leads.filter(
+    (lead) => leadCustomFieldString(lead, "linkedin_outcome") === "Pending"
+  );
+  const readyToReview = leads.filter((lead) =>
+    ["Ready to review", "Approved", "Needs LinkedIn profile verification"].includes(
+      leadCustomFieldString(lead, "linkedin_review_status")
+    )
+  );
+  const blocked = leads.filter((lead) =>
+    leadCustomFieldString(lead, "linkedin_review_status").match(/blocked|not sent/i)
+  );
+
+  return (
+    <div className="network-workspace">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">LinkedIn prospecting</p>
+          <h3>Client network expansion</h3>
+        </div>
+        <div className="segmented" aria-label="LinkedIn priority filter">
+          <button
+            className={priorityFilter === "all" ? "selected" : ""}
+            onClick={() => setPriorityFilter("all")}
+          >
+            <Filter size={15} /> All
+          </button>
+          {priorityOptions.map((priority) => (
+            <button
+              key={priority}
+              className={priorityFilter === priority ? "selected" : ""}
+              onClick={() => setPriorityFilter(priority)}
+            >
+              {priority}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="network-summary" aria-label="LinkedIn prospecting summary">
+        <div className="detail-metric">
+          <span>Prospects</span>
+          <strong>{leads.length}</strong>
+        </div>
+        <div className="detail-metric">
+          <span>Pending invites</span>
+          <strong>{pendingInvites.length}</strong>
+        </div>
+        <div className="detail-metric">
+          <span>Ready to review</span>
+          <strong>{readyToReview.length}</strong>
+        </div>
+        <div className="detail-metric">
+          <span>Follow-ups</span>
+          <strong>{followUpTasks.length}</strong>
+        </div>
+        <div className="detail-metric">
+          <span>Blocked or skipped</span>
+          <strong>{blocked.length}</strong>
+        </div>
+      </div>
+
+      <section className="data-section conference-filter-panel" aria-label="LinkedIn queue filters">
+        <div className="conference-filter-grid compact">
+          <label>
+            <span>Review status</span>
+            <select
+              value={reviewStatusFilter}
+              onChange={(event) => setReviewStatusFilter(event.target.value)}
+            >
+              <option value="all">All review statuses</option>
+              {reviewStatusOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="detail-metric">
+            <span>Showing</span>
+            <strong>
+              {visibleLeads.length} of {leads.length}
+            </strong>
+          </div>
+        </div>
+      </section>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Prospect</th>
+              <th scope="col">Priority</th>
+              <th scope="col">Review</th>
+              <th scope="col">Outcome</th>
+              <th scope="col">Follow-up</th>
+              <th scope="col">Suggested note</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleLeads.map((lead) => {
+              const profileUrl = leadCustomFieldString(lead, "linkedin_profile_url");
+              const note = leadCustomFieldString(lead, "linkedin_suggested_note");
+              return (
+                <tr key={lead.id}>
+                  <td>
+                    <button className="link-button" onClick={() => onOpenRecord(lead)}>
+                      {lead.contactName}
+                    </button>
+                    <p className="table-subtext">{lead.companyName ?? ""}</p>
+                    {profileUrl ? <p className="table-subtext">{profileUrl}</p> : null}
+                  </td>
+                  <td>
+                    <strong>{leadCustomFieldString(lead, "linkedin_priority") || "Unranked"}</strong>
+                    <p className="table-subtext">
+                      {leadCustomFieldString(lead, "linkedin_region")}
+                    </p>
+                  </td>
+                  <td>{leadCustomFieldString(lead, "linkedin_review_status")}</td>
+                  <td>{leadCustomFieldString(lead, "linkedin_outcome")}</td>
+                  <td>{leadCustomFieldString(lead, "linkedin_follow_up_date")}</td>
+                  <td>
+                    <p className="network-note">{note}</p>
+                  </td>
+                  <td>
+                    <button className="table-action" onClick={() => onOpenRecord(lead)}>
+                      Open
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {visibleLeads.length === 0 ? <div className="empty-state">No LinkedIn prospects match the filters.</div> : null}
+    </div>
   );
 }
 
@@ -2689,6 +4087,1309 @@ function ContactsView({
       </div>
       {message ? <p className="data-message">{message}</p> : null}
     </>
+  );
+}
+
+function ConferenceCreateForm({
+  busy,
+  draft,
+  onCancel,
+  onChange,
+  onSubmit
+}: {
+  busy: boolean;
+  draft: ConferenceCreateDraft;
+  onCancel: () => void;
+  onChange: (draft: ConferenceCreateDraft) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <RecordCreatePanel title="conference">
+      <label>
+        <span>Conference</span>
+        <input
+          value={draft.name}
+          onChange={(event) => onChange({ ...draft, name: event.target.value })}
+          placeholder="Digital Assets Summit"
+        />
+      </label>
+      <label>
+        <span>Start</span>
+        <input
+          type="date"
+          value={draft.startDate}
+          onChange={(event) => onChange({ ...draft, startDate: event.target.value })}
+        />
+      </label>
+      <label>
+        <span>End</span>
+        <input
+          type="date"
+          value={draft.endDate}
+          onChange={(event) => onChange({ ...draft, endDate: event.target.value })}
+        />
+      </label>
+      <label>
+        <span>Location</span>
+        <input
+          value={draft.location}
+          onChange={(event) => onChange({ ...draft, location: event.target.value })}
+          placeholder="New York, NY"
+        />
+      </label>
+      <label>
+        <span>Website</span>
+        <input
+          value={draft.website}
+          onChange={(event) => onChange({ ...draft, website: event.target.value })}
+          placeholder="https://example.com"
+        />
+      </label>
+      <label>
+        <span>Audience</span>
+        <input
+          value={draft.audienceType}
+          onChange={(event) => onChange({ ...draft, audienceType: event.target.value })}
+          placeholder="Private markets and RWA"
+        />
+      </label>
+      <RecordCreateActions
+        busy={busy}
+        disabled={!conferenceCreateInput(draft)}
+        label="Create conference"
+        onCancel={onCancel}
+        onSubmit={onSubmit}
+      />
+    </RecordCreatePanel>
+  );
+}
+
+function ConferencesView({
+  accountsById,
+  busy,
+  companyDraft,
+  companyImportPreview,
+  companyCsv,
+  companyCsvPlaceholder,
+  companies,
+  conferencePeopleById,
+  conferences,
+  currentTab,
+  dataPermissions,
+  meetingCsv,
+  meetingCsvPlaceholder,
+  meetingDraft,
+  meetingImportPreview,
+  meetings,
+  message,
+  people,
+  personDraft,
+  personImportPreview,
+  personCsv,
+  personCsvPlaceholder,
+  selectedConference,
+  selectedConferenceId,
+  onCompanyCsvChange,
+  onCompanyDraftChange,
+  onCreateAccountFromCompany,
+  onCreateCompany,
+  onCreateContactFromPerson,
+  onCreateMeeting,
+  onCreatePerson,
+  onCreateTask,
+  onBulkCreateTasks,
+  onBulkMarkOptOut,
+  onBulkRequestMeetings,
+  onBulkSetOutreachStatus,
+  onImportCompanies,
+  onImportMeetings,
+  onImportPeople,
+  onMeetingCsvChange,
+  onMeetingDraftChange,
+  onPersonCsvChange,
+  onPersonDraftChange,
+  onPreviewCompanies,
+  onPreviewMeetings,
+  onPreviewPeople,
+  onSelectConference,
+  onTabChange
+}: {
+  accountsById: Map<string, Account>;
+  busy: boolean;
+  companyDraft: ConferenceCompanyDraft;
+  companyImportPreview: ConferenceCompanyImportPreview | null;
+  companyCsv: string;
+  companyCsvPlaceholder: string;
+  companies: ConferenceCompany[];
+  conferencePeopleById: Map<string, ConferencePerson>;
+  conferences: Conference[];
+  currentTab: ConferenceTab;
+  dataPermissions: DataPermissions;
+  meetingCsv: string;
+  meetingCsvPlaceholder: string;
+  meetingDraft: ConferenceMeetingDraft;
+  meetingImportPreview: ConferenceMeetingImportPreview | null;
+  meetings: ConferenceMeeting[];
+  message: string;
+  people: ConferencePerson[];
+  personDraft: ConferencePersonDraft;
+  personImportPreview: ConferencePersonImportPreview | null;
+  personCsv: string;
+  personCsvPlaceholder: string;
+  selectedConference: Conference | null;
+  selectedConferenceId: string;
+  onCompanyCsvChange: (value: string) => void;
+  onCompanyDraftChange: (draft: ConferenceCompanyDraft) => void;
+  onCreateAccountFromCompany: (company: ConferenceCompany) => void;
+  onCreateCompany: () => void;
+  onCreateContactFromPerson: (person: ConferencePerson) => void;
+  onCreateMeeting: () => void;
+  onCreatePerson: () => void;
+  onCreateTask: (person: ConferencePerson) => void;
+  onBulkCreateTasks: (people: ConferencePerson[]) => void;
+  onBulkMarkOptOut: (people: ConferencePerson[]) => void;
+  onBulkRequestMeetings: (people: ConferencePerson[]) => void;
+  onBulkSetOutreachStatus: (
+    people: ConferencePerson[],
+    outreachStatus: ConferenceOutreachStatus
+  ) => void;
+  onImportCompanies: () => void;
+  onImportMeetings: () => void;
+  onImportPeople: () => void;
+  onMeetingCsvChange: (value: string) => void;
+  onMeetingDraftChange: (draft: ConferenceMeetingDraft) => void;
+  onPersonCsvChange: (value: string) => void;
+  onPersonDraftChange: (draft: ConferencePersonDraft) => void;
+  onPreviewCompanies: () => void;
+  onPreviewMeetings: () => void;
+  onPreviewPeople: () => void;
+  onSelectConference: (id: string) => void;
+  onTabChange: (tab: ConferenceTab) => void;
+}) {
+  const selectedCompanyCount = companies.length;
+  const selectedPriorityCount = people.filter((person) => person.priorityBand === "request_meeting").length;
+  const selectedBookedCount = meetings.filter((meeting) => meeting.status === "booked").length;
+
+  return (
+    <>
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Conferences</p>
+          <h3>Account first prospecting</h3>
+        </div>
+        <select
+          className="field-input compact-select"
+          value={selectedConferenceId}
+          onChange={(event) => onSelectConference(event.target.value)}
+        >
+          {conferences.map((conference) => (
+            <option key={conference.id} value={conference.id}>
+              {conference.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {!selectedConference ? (
+        <p className="data-message">Create a conference to start prospecting.</p>
+      ) : (
+        <div className="conference-workspace">
+          <section className="data-section conference-summary" aria-label="Conference summary">
+            <div>
+              <p className="eyebrow">{formatDate(selectedConference.startDate)}</p>
+              <h4>{selectedConference.name}</h4>
+            </div>
+            <div className="import-summary">
+              <strong>{selectedCompanyCount}</strong>
+              <span>companies</span>
+              <strong>{people.length}</strong>
+              <span>people</span>
+              <strong>{selectedPriorityCount}</strong>
+              <span>priority</span>
+              <strong>{selectedBookedCount}</strong>
+              <span>booked</span>
+            </div>
+            <p className="table-subtext">
+              {[selectedConference.location, selectedConference.audienceType, selectedConference.attendeeAccessStatus]
+                .filter(Boolean)
+                .join(" / ")}
+            </p>
+          </section>
+
+          <div className="segmented" aria-label="Conference tabs">
+            {(["companies", "people", "meetings", "queries", "templates", "access"] as ConferenceTab[]).map((tab) => (
+              <button
+                className={currentTab === tab ? "selected" : ""}
+                key={tab}
+                onClick={() => onTabChange(tab)}
+              >
+                {tabLabel(tab)}
+              </button>
+            ))}
+          </div>
+
+          {currentTab === "companies" ? (
+            <ConferenceCompaniesTab
+              accountsById={accountsById}
+              busy={busy}
+              csv={companyCsv}
+              csvPlaceholder={companyCsvPlaceholder}
+              draft={companyDraft}
+              preview={companyImportPreview}
+              companies={companies}
+              dataPermissions={dataPermissions}
+              onCsvChange={onCompanyCsvChange}
+              onCreateAccount={onCreateAccountFromCompany}
+              onDraftChange={onCompanyDraftChange}
+              onImport={onImportCompanies}
+              onPreview={onPreviewCompanies}
+              onSubmit={onCreateCompany}
+            />
+          ) : null}
+
+          {currentTab === "people" ? (
+            <ConferencePeopleTab
+              busy={busy}
+              companies={companies}
+              csv={personCsv}
+              csvPlaceholder={personCsvPlaceholder}
+              dataPermissions={dataPermissions}
+              draft={personDraft}
+              people={people}
+              preview={personImportPreview}
+              onCreateContact={onCreateContactFromPerson}
+              onCreateTask={onCreateTask}
+              onBulkCreateTasks={onBulkCreateTasks}
+              onBulkMarkOptOut={onBulkMarkOptOut}
+              onBulkRequestMeetings={onBulkRequestMeetings}
+              onBulkSetOutreachStatus={onBulkSetOutreachStatus}
+              onCsvChange={onPersonCsvChange}
+              onDraftChange={onPersonDraftChange}
+              onImport={onImportPeople}
+              onPreview={onPreviewPeople}
+              onSubmit={onCreatePerson}
+            />
+          ) : null}
+
+          {currentTab === "meetings" ? (
+            <ConferenceMeetingsTab
+              busy={busy}
+              csv={meetingCsv}
+              csvPlaceholder={meetingCsvPlaceholder}
+              dataPermissions={dataPermissions}
+              draft={meetingDraft}
+              preview={meetingImportPreview}
+              meetings={meetings}
+              people={people}
+              peopleById={conferencePeopleById}
+              onCsvChange={onMeetingCsvChange}
+              onDraftChange={onMeetingDraftChange}
+              onImport={onImportMeetings}
+              onPreview={onPreviewMeetings}
+              onSubmit={onCreateMeeting}
+            />
+          ) : null}
+
+          {currentTab === "queries" ? (
+            <ConferenceQueriesTab conferenceName={selectedConference.name} />
+          ) : null}
+
+          {currentTab === "templates" ? (
+            <ConferenceTemplatesTab />
+          ) : null}
+
+          {currentTab === "access" ? (
+            <ConferenceAccessTab conference={selectedConference} />
+          ) : null}
+        </div>
+      )}
+
+      {message ? <p className="data-message">{message}</p> : null}
+    </>
+  );
+}
+
+function ConferenceCompaniesTab({
+  accountsById,
+  busy,
+  companies,
+  csv,
+  csvPlaceholder,
+  dataPermissions,
+  draft,
+  preview,
+  onCsvChange,
+  onCreateAccount,
+  onDraftChange,
+  onImport,
+  onPreview,
+  onSubmit
+}: {
+  accountsById: Map<string, Account>;
+  busy: boolean;
+  companies: ConferenceCompany[];
+  csv: string;
+  csvPlaceholder: string;
+  dataPermissions: DataPermissions;
+  draft: ConferenceCompanyDraft;
+  preview: ConferenceCompanyImportPreview | null;
+  onCsvChange: (value: string) => void;
+  onCreateAccount: (company: ConferenceCompany) => void;
+  onDraftChange: (draft: ConferenceCompanyDraft) => void;
+  onImport: () => void;
+  onPreview: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <>
+      <section className="data-section" aria-label="Add conference company">
+        <div>
+          <p className="eyebrow">Company first</p>
+          <h4>Add account prospect</h4>
+        </div>
+        <div className="field-form conference-form-grid">
+          <label>
+            <span>Company</span>
+            <input
+              value={draft.company}
+              onChange={(event) => onDraftChange({ ...draft, company: event.target.value })}
+              placeholder="Harbor Finance"
+            />
+          </label>
+          <label>
+            <span>Role</span>
+            <select
+              value={draft.conferenceRole}
+              onChange={(event) =>
+                onDraftChange({ ...draft, conferenceRole: event.target.value as ConferenceRole })
+              }
+            >
+              {conferenceRoles.map((role) => (
+                <option key={role} value={role}>
+                  {formatLabel(role)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Sector</span>
+            <input
+              value={draft.sector}
+              onChange={(event) => onDraftChange({ ...draft, sector: event.target.value })}
+              placeholder="Private markets"
+            />
+          </label>
+          <label>
+            <span>Score</span>
+            <input
+              inputMode="numeric"
+              value={draft.companyScore}
+              onChange={(event) => onDraftChange({ ...draft, companyScore: event.target.value })}
+              placeholder="17"
+            />
+          </label>
+          <label>
+            <span>Website</span>
+            <input
+              value={draft.website}
+              onChange={(event) => onDraftChange({ ...draft, website: event.target.value })}
+              placeholder="https://example.com"
+            />
+          </label>
+          <label>
+            <span>Source URL</span>
+            <input
+              value={draft.sourceUrl}
+              onChange={(event) => onDraftChange({ ...draft, sourceUrl: event.target.value })}
+              placeholder="https://example.com/sponsors"
+            />
+          </label>
+          {[
+            ["rwaRelevance", "RWA"] as const,
+            ["privateMarketsRelevance", "Private markets"] as const,
+            ["fundraisingRelevance", "Fundraising"] as const,
+            ["marketEntryRelevance", "Market entry"] as const,
+            ["partnershipRelevance", "Partnership"] as const
+          ].map(([field, label]) => (
+            <label className="check-field" key={field}>
+              <input
+                checked={draft[field]}
+                onChange={(event) => onDraftChange({ ...draft, [field]: event.target.checked })}
+                type="checkbox"
+              />
+              <span>{label}</span>
+            </label>
+          ))}
+          <button className="primary-action" disabled={busy || !draft.company.trim()} onClick={onSubmit}>
+            <Plus size={16} /> Add company
+          </button>
+        </div>
+      </section>
+
+      <ImportSection
+        title="Conference company CSV"
+        label="Conference company CSV"
+        value={csv}
+        placeholder={csvPlaceholder}
+        busy={busy}
+        allowed={dataPermissions.canImportConferences}
+        preview={preview}
+        onChange={onCsvChange}
+        onPreview={onPreview}
+        onImport={onImport}
+      />
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Company</th>
+              <th scope="col">Role</th>
+              <th scope="col">Sector</th>
+              <th scope="col">Fit</th>
+              <th scope="col">Score</th>
+              <th scope="col">Linked account</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {companies.map((company) => (
+              <tr key={company.id}>
+                <td>
+                  <strong>{company.company}</strong>
+                  <p className="table-subtext">{company.sourceUrl ?? company.website ?? ""}</p>
+                </td>
+                <td><StatusPill value={company.conferenceRole} /></td>
+                <td>{company.sector ?? ""}</td>
+                <td>{companyFitLabels(company).join(", ")}</td>
+                <td>{company.companyScore}</td>
+                <td>{company.accountId ? accountsById.get(company.accountId)?.name ?? "" : ""}</td>
+                <td>
+                  <button
+                    className="table-action"
+                    disabled={busy || Boolean(company.accountId)}
+                    onClick={() => onCreateAccount(company)}
+                  >
+                    <Building2 size={16} /> Account
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function ConferencePeopleTab({
+  busy,
+  companies,
+  csv,
+  csvPlaceholder,
+  dataPermissions,
+  draft,
+  people,
+  preview,
+  onBulkCreateTasks,
+  onBulkMarkOptOut,
+  onBulkRequestMeetings,
+  onBulkSetOutreachStatus,
+  onCreateContact,
+  onCreateTask,
+  onCsvChange,
+  onDraftChange,
+  onImport,
+  onPreview,
+  onSubmit
+}: {
+  busy: boolean;
+  companies: ConferenceCompany[];
+  csv: string;
+  csvPlaceholder: string;
+  dataPermissions: DataPermissions;
+  draft: ConferencePersonDraft;
+  people: ConferencePerson[];
+  preview: ConferencePersonImportPreview | null;
+  onBulkCreateTasks: (people: ConferencePerson[]) => void;
+  onBulkMarkOptOut: (people: ConferencePerson[]) => void;
+  onBulkRequestMeetings: (people: ConferencePerson[]) => void;
+  onBulkSetOutreachStatus: (
+    people: ConferencePerson[],
+    outreachStatus: ConferenceOutreachStatus
+  ) => void;
+  onCreateContact: (person: ConferencePerson) => void;
+  onCreateTask: (person: ConferencePerson) => void;
+  onCsvChange: (value: string) => void;
+  onDraftChange: (draft: ConferencePersonDraft) => void;
+  onImport: () => void;
+  onPreview: () => void;
+  onSubmit: () => void;
+}) {
+  const [priorityFilter, setPriorityFilter] = useState<ConferencePriorityBand | "all">("all");
+  const [icpFilter, setIcpFilter] = useState<ConferenceIcpCategory | "all">("all");
+  const [companyScoreFilter, setCompanyScoreFilter] =
+    useState<ConferenceCompanyScoreFilter>("all");
+  const [signalFilter, setSignalFilter] = useState<ConferenceSignalFilter>("all");
+  const [outreachFilter, setOutreachFilter] = useState<ConferenceOutreachStatus | "all">("all");
+  const [sourceFilter, setSourceFilter] = useState<ConferenceSourceType | "all">("all");
+  const [optOutFilter, setOptOutFilter] = useState<ConferenceOptOutStatus | "all">("all");
+  const [bulkOutreachStatus, setBulkOutreachStatus] =
+    useState<ConferenceOutreachStatus>("queued");
+  const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
+  const selectedPersonIdSet = useMemo(() => new Set(selectedPersonIds), [selectedPersonIds]);
+  const companiesById = useMemo(
+    () => new Map(companies.map((company) => [company.id, company])),
+    [companies]
+  );
+  const filteredPeople = useMemo(
+    () =>
+      people.filter((person) => {
+        if (priorityFilter !== "all" && person.priorityBand !== priorityFilter) {
+          return false;
+        }
+        if (icpFilter !== "all" && person.icpCategory !== icpFilter) {
+          return false;
+        }
+        if (outreachFilter !== "all" && person.outreachStatus !== outreachFilter) {
+          return false;
+        }
+        if (sourceFilter !== "all" && person.sourceType !== sourceFilter) {
+          return false;
+        }
+        if (optOutFilter !== "all" && person.optOutStatus !== optOutFilter) {
+          return false;
+        }
+        if (companyScoreFilter !== "all") {
+          const companyScore = person.conferenceCompanyId
+            ? companiesById.get(person.conferenceCompanyId)?.companyScore ?? -1
+            : -1;
+          if (companyScore < Number(companyScoreFilter)) {
+            return false;
+          }
+        }
+        if (
+          signalFilter === "has_signal" &&
+          !person.conferenceSignal &&
+          !person.buyingSignal
+        ) {
+          return false;
+        }
+        if (signalFilter === "strong_signal" && person.conferenceSignalScore < 2) {
+          return false;
+        }
+        return true;
+      }),
+    [
+      companiesById,
+      companyScoreFilter,
+      icpFilter,
+      optOutFilter,
+      outreachFilter,
+      people,
+      priorityFilter,
+      signalFilter,
+      sourceFilter
+    ]
+  );
+  const selectedPeople = useMemo(
+    () => people.filter((person) => selectedPersonIdSet.has(person.id)),
+    [people, selectedPersonIdSet]
+  );
+  const allVisibleSelected =
+    filteredPeople.length > 0 && filteredPeople.every((person) => selectedPersonIdSet.has(person.id));
+
+  useEffect(() => {
+    setSelectedPersonIds((current) => {
+      const visibleIds = new Set(filteredPeople.map((person) => person.id));
+      const next = current.filter((id) => visibleIds.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [filteredPeople]);
+
+  function togglePersonSelection(id: string) {
+    setSelectedPersonIds((current) =>
+      current.includes(id)
+        ? current.filter((candidate) => candidate !== id)
+        : [...current, id]
+    );
+  }
+
+  function toggleAllVisiblePeople() {
+    const visibleIds = filteredPeople.map((person) => person.id);
+    setSelectedPersonIds((current) => {
+      if (allVisibleSelected) {
+        return current.filter((id) => !visibleIds.includes(id));
+      }
+      return Array.from(new Set([...current, ...visibleIds]));
+    });
+  }
+
+  return (
+    <>
+      <section className="data-section" aria-label="Add conference person">
+        <div>
+          <p className="eyebrow">Senior people</p>
+          <h4>Add buyer or partner</h4>
+        </div>
+        <div className="field-form conference-form-grid">
+          <label>
+            <span>Name</span>
+            <input value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} />
+          </label>
+          <label>
+            <span>Title</span>
+            <input value={draft.title} onChange={(event) => onDraftChange({ ...draft, title: event.target.value })} />
+          </label>
+          <label>
+            <span>Company</span>
+            <select
+              value={draft.conferenceCompanyId}
+              onChange={(event) => onDraftChange({ ...draft, conferenceCompanyId: event.target.value })}
+            >
+              <option value="">No linked company</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.company}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>ICP</span>
+            <select
+              value={draft.icpCategory}
+              onChange={(event) =>
+                onDraftChange({ ...draft, icpCategory: event.target.value as ConferenceIcpCategory })
+              }
+            >
+              {conferenceIcpCategories.map((category) => (
+                <option key={category} value={category}>
+                  {formatLabel(category)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>LinkedIn</span>
+            <input
+              value={draft.linkedIn}
+              onChange={(event) => onDraftChange({ ...draft, linkedIn: event.target.value })}
+              placeholder="https://linkedin.com/in/..."
+            />
+          </label>
+          <label>
+            <span>Email</span>
+            <input
+              value={draft.email}
+              onChange={(event) => onDraftChange({ ...draft, email: event.target.value })}
+              placeholder="Only if lawfully sourced"
+            />
+          </label>
+          <label>
+            <span>Source type</span>
+            <select
+              value={draft.sourceType}
+              onChange={(event) =>
+                onDraftChange({ ...draft, sourceType: event.target.value as ConferenceSourceType })
+              }
+            >
+              {conferenceSourceTypes.map((sourceType) => (
+                <option key={sourceType} value={sourceType}>
+                  {formatLabel(sourceType)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Opt out</span>
+            <select
+              value={draft.optOutStatus}
+              onChange={(event) =>
+                onDraftChange({ ...draft, optOutStatus: event.target.value as ConferenceOptOutStatus })
+              }
+            >
+              <option value="unknown">Unknown</option>
+              <option value="not_opted_out">Not opted out</option>
+              <option value="opted_out">Opted out</option>
+            </select>
+          </label>
+          <label className="field-options">
+            <span>Signal</span>
+            <input
+              value={draft.conferenceSignal}
+              onChange={(event) => onDraftChange({ ...draft, conferenceSignal: event.target.value })}
+              placeholder="Speaker on tokenization panel"
+            />
+          </label>
+          <label className="field-options">
+            <span>Buying signal</span>
+            <input
+              value={draft.buyingSignal}
+              onChange={(event) => onDraftChange({ ...draft, buyingSignal: event.target.value })}
+              placeholder="Fund launch, RWA expansion, partnership"
+            />
+          </label>
+          <label className="field-options">
+            <span>Lawful basis notes</span>
+            <input
+              value={draft.lawfulBasisNotes}
+              onChange={(event) => onDraftChange({ ...draft, lawfulBasisNotes: event.target.value })}
+              placeholder="Required before storing email"
+            />
+          </label>
+          <div className="score-grid">
+            {[
+              ["seniorityScore", "Seniority"] as const,
+              ["companyFitScore", "Company fit"] as const,
+              ["signalScore", "Signal"] as const,
+              ["conferenceSignalScore", "Conference"] as const,
+              ["warmIntroScore", "Intro"] as const,
+              ["timingScore", "Timing"] as const
+            ].map(([field, label]) => (
+              <label key={field}>
+                <span>{label}</span>
+                <input
+                  inputMode="numeric"
+                  value={draft[field]}
+                  onChange={(event) => onDraftChange({ ...draft, [field]: event.target.value })}
+                />
+              </label>
+            ))}
+          </div>
+          <button className="primary-action" disabled={busy || !draft.name.trim() || !draft.title.trim()} onClick={onSubmit}>
+            <Plus size={16} /> Add person
+          </button>
+        </div>
+      </section>
+
+      <ImportSection
+        title="Conference people CSV"
+        label="Conference people CSV"
+        value={csv}
+        placeholder={csvPlaceholder}
+        busy={busy}
+        allowed={dataPermissions.canImportConferences}
+        preview={preview}
+        onChange={onCsvChange}
+        onPreview={onPreview}
+        onImport={onImport}
+      />
+
+      <section className="data-section conference-filter-panel" aria-label="Conference people filters">
+        <div>
+          <p className="eyebrow">Prioritize</p>
+          <h4>Filter senior attendees</h4>
+        </div>
+        <div className="conference-filter-grid">
+          <label>
+            <span>Priority</span>
+            <select
+              value={priorityFilter}
+              onChange={(event) =>
+                setPriorityFilter(event.target.value as ConferencePriorityBand | "all")
+              }
+            >
+              <option value="all">All priorities</option>
+              {conferencePriorityBands.map((priority) => (
+                <option key={priority} value={priority}>
+                  {formatLabel(priority)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>ICP</span>
+            <select
+              value={icpFilter}
+              onChange={(event) =>
+                setIcpFilter(event.target.value as ConferenceIcpCategory | "all")
+              }
+            >
+              <option value="all">All ICP categories</option>
+              {conferenceIcpCategories.map((category) => (
+                <option key={category} value={category}>
+                  {formatLabel(category)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Company score</span>
+            <select
+              value={companyScoreFilter}
+              onChange={(event) =>
+                setCompanyScoreFilter(event.target.value as ConferenceCompanyScoreFilter)
+              }
+            >
+              <option value="all">All company scores</option>
+              <option value="16">16+</option>
+              <option value="12">12+</option>
+              <option value="8">8+</option>
+            </select>
+          </label>
+          <label>
+            <span>Conference signal</span>
+            <select
+              value={signalFilter}
+              onChange={(event) => setSignalFilter(event.target.value as ConferenceSignalFilter)}
+            >
+              <option value="all">All signals</option>
+              <option value="has_signal">Has signal</option>
+              <option value="strong_signal">Strong signal score</option>
+            </select>
+          </label>
+          <label>
+            <span>Outreach</span>
+            <select
+              value={outreachFilter}
+              onChange={(event) =>
+                setOutreachFilter(event.target.value as ConferenceOutreachStatus | "all")
+              }
+            >
+              <option value="all">All outreach statuses</option>
+              {conferenceOutreachStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {formatLabel(status)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Source type</span>
+            <select
+              value={sourceFilter}
+              onChange={(event) =>
+                setSourceFilter(event.target.value as ConferenceSourceType | "all")
+              }
+            >
+              <option value="all">All source types</option>
+              {conferenceSourceTypes.map((sourceType) => (
+                <option key={sourceType} value={sourceType}>
+                  {formatLabel(sourceType)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Opt out</span>
+            <select
+              value={optOutFilter}
+              onChange={(event) =>
+                setOptOutFilter(event.target.value as ConferenceOptOutStatus | "all")
+              }
+            >
+              <option value="all">All opt-out statuses</option>
+              {conferenceOptOutStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {formatLabel(status)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="conference-bulk-bar">
+          <p className="task-filter-summary">
+            Showing {filteredPeople.length} of {people.length} people / {selectedPeople.length} selected
+          </p>
+          <div className="data-actions">
+            <label className="bulk-select-field">
+              <span>Set outreach</span>
+              <select
+                value={bulkOutreachStatus}
+                onChange={(event) =>
+                  setBulkOutreachStatus(event.target.value as ConferenceOutreachStatus)
+                }
+              >
+                {conferenceOutreachStatuses.map((status) => (
+                  <option key={status} value={status}>
+                    {formatLabel(status)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              disabled={busy || selectedPeople.length === 0}
+              onClick={() => onBulkSetOutreachStatus(selectedPeople, bulkOutreachStatus)}
+            >
+              <Check size={16} /> Apply
+            </button>
+            <button
+              disabled={busy || selectedPeople.length === 0}
+              onClick={() => onBulkRequestMeetings(selectedPeople)}
+            >
+              <CalendarDays size={16} /> Request
+            </button>
+            <button
+              disabled={busy || selectedPeople.length === 0}
+              onClick={() => onBulkCreateTasks(selectedPeople)}
+            >
+              <ClipboardCheck size={16} /> Tasks
+            </button>
+            <button
+              disabled={busy || selectedPeople.length === 0}
+              onClick={() => onBulkMarkOptOut(selectedPeople)}
+            >
+              <X size={16} /> Opt out
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">
+                <span className="sr-only">Select</span>
+                <input
+                  aria-label="Select all visible conference people"
+                  checked={allVisibleSelected}
+                  disabled={filteredPeople.length === 0}
+                  onChange={toggleAllVisiblePeople}
+                  type="checkbox"
+                />
+              </th>
+              <th scope="col">Person</th>
+              <th scope="col">ICP</th>
+              <th scope="col">Signal</th>
+              <th scope="col">Score</th>
+              <th scope="col">Priority</th>
+              <th scope="col">Source</th>
+              <th scope="col">Outreach</th>
+              <th scope="col">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredPeople.length === 0 ? (
+              <tr>
+                <td colSpan={9}>No people match these filters.</td>
+              </tr>
+            ) : null}
+            {filteredPeople.map((person) => (
+              <tr key={person.id}>
+                <td>
+                  <input
+                    aria-label={`Select ${person.name}`}
+                    checked={selectedPersonIdSet.has(person.id)}
+                    onChange={() => togglePersonSelection(person.id)}
+                    type="checkbox"
+                  />
+                </td>
+                <td>
+                  <strong>{person.name}</strong>
+                  <p className="table-subtext">{person.title}</p>
+                </td>
+                <td><StatusPill value={person.icpCategory} /></td>
+                <td>{person.buyingSignal || person.conferenceSignal || ""}</td>
+                <td>{person.totalScore}/20</td>
+                <td><StatusPill value={person.priorityBand} /></td>
+                <td><StatusPill value={person.sourceType} /></td>
+                <td>
+                  <StatusPill value={person.optOutStatus === "opted_out" ? "opted_out" : person.outreachStatus} />
+                </td>
+                <td>
+                  <div className="table-action-group">
+                    <button
+                      className="table-action"
+                      disabled={busy || person.optOutStatus === "opted_out"}
+                      onClick={() => onCreateTask(person)}
+                    >
+                      <ClipboardCheck size={16} /> Task
+                    </button>
+                    <button
+                      className="table-action"
+                      disabled={busy || Boolean(person.contactId)}
+                      onClick={() => onCreateContact(person)}
+                    >
+                      <UserRound size={16} /> Contact
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function ConferenceMeetingsTab({
+  busy,
+  csv,
+  csvPlaceholder,
+  dataPermissions,
+  draft,
+  meetings,
+  people,
+  peopleById,
+  preview,
+  onCsvChange,
+  onDraftChange,
+  onImport,
+  onPreview,
+  onSubmit
+}: {
+  busy: boolean;
+  csv: string;
+  csvPlaceholder: string;
+  dataPermissions: DataPermissions;
+  draft: ConferenceMeetingDraft;
+  meetings: ConferenceMeeting[];
+  people: ConferencePerson[];
+  peopleById: Map<string, ConferencePerson>;
+  preview: ConferenceMeetingImportPreview | null;
+  onCsvChange: (value: string) => void;
+  onDraftChange: (draft: ConferenceMeetingDraft) => void;
+  onImport: () => void;
+  onPreview: () => void;
+  onSubmit: () => void;
+}) {
+  const [meetingStatusFilter, setMeetingStatusFilter] =
+    useState<ConferenceMeetingStatus | "all">("all");
+  const filteredMeetings = useMemo(
+    () =>
+      meetingStatusFilter === "all"
+        ? meetings
+        : meetings.filter((meeting) => meeting.status === meetingStatusFilter),
+    [meetingStatusFilter, meetings]
+  );
+
+  return (
+    <>
+      <section className="data-section" aria-label="Add conference meeting">
+        <div>
+          <p className="eyebrow">Meetings</p>
+          <h4>Plan targeted asks</h4>
+        </div>
+        <div className="field-form conference-form-grid">
+          <label>
+            <span>Person</span>
+            <select
+              value={draft.conferencePersonId}
+              onChange={(event) => onDraftChange({ ...draft, conferencePersonId: event.target.value })}
+            >
+              <option value="">Select person</option>
+              {people.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select
+              value={draft.status}
+              onChange={(event) =>
+                onDraftChange({ ...draft, status: event.target.value as ConferenceMeetingStatus })
+              }
+            >
+              {conferenceMeetingStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {formatLabel(status)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field-options">
+            <span>Reason</span>
+            <input
+              value={draft.reasonToMeet}
+              onChange={(event) => onDraftChange({ ...draft, reasonToMeet: event.target.value })}
+              placeholder="Compare notes on RWA partner readiness"
+            />
+          </label>
+          <label className="field-options">
+            <span>Proposed ask</span>
+            <input
+              value={draft.proposedAsk}
+              onChange={(event) => onDraftChange({ ...draft, proposedAsk: event.target.value })}
+              placeholder="15-minute meeting on day 1"
+            />
+          </label>
+          <label>
+            <span>Intro path</span>
+            <input
+              value={draft.introPath}
+              onChange={(event) => onDraftChange({ ...draft, introPath: event.target.value })}
+              placeholder="Warm intro"
+            />
+          </label>
+          <label>
+            <span>Next step</span>
+            <input
+              value={draft.nextStep}
+              onChange={(event) => onDraftChange({ ...draft, nextStep: event.target.value })}
+              placeholder="Request intro"
+            />
+          </label>
+          <button
+            className="primary-action"
+            disabled={busy || !draft.conferencePersonId || !draft.reasonToMeet.trim()}
+            onClick={onSubmit}
+          >
+            <Plus size={16} /> Add meeting
+          </button>
+        </div>
+      </section>
+
+      <ImportSection
+        title="Conference meeting CSV"
+        label="Conference meeting CSV"
+        value={csv}
+        placeholder={csvPlaceholder}
+        busy={busy}
+        allowed={dataPermissions.canImportConferences}
+        preview={preview}
+        onChange={onCsvChange}
+        onPreview={onPreview}
+        onImport={onImport}
+      />
+
+      <section className="data-section conference-filter-panel" aria-label="Conference meeting filters">
+        <div>
+          <p className="eyebrow">Meeting pipeline</p>
+          <h4>Filter meeting status</h4>
+        </div>
+        <div className="conference-filter-grid compact">
+          <label>
+            <span>Meeting status</span>
+            <select
+              value={meetingStatusFilter}
+              onChange={(event) =>
+                setMeetingStatusFilter(event.target.value as ConferenceMeetingStatus | "all")
+              }
+            >
+              <option value="all">All meeting statuses</option>
+              {conferenceMeetingStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {formatLabel(status)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <p className="task-filter-summary">
+          Showing {filteredMeetings.length} of {meetings.length} meetings
+        </p>
+      </section>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">Person</th>
+              <th scope="col">Reason</th>
+              <th scope="col">Ask</th>
+              <th scope="col">Status</th>
+              <th scope="col">Next</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredMeetings.length === 0 ? (
+              <tr>
+                <td colSpan={5}>No meetings match this filter.</td>
+              </tr>
+            ) : null}
+            {filteredMeetings.map((meeting) => {
+              const person = peopleById.get(meeting.conferencePersonId);
+              return (
+                <tr key={meeting.id}>
+                  <td>{person?.name ?? "Unknown"}</td>
+                  <td>{meeting.reasonToMeet}</td>
+                  <td>{meeting.proposedAsk ?? ""}</td>
+                  <td><StatusPill value={meeting.status} /></td>
+                  <td>{meeting.nextStep ?? ""}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function ConferenceQueriesTab({ conferenceName }: { conferenceName: string }) {
+  const queries = conferenceSearchQueries(conferenceName);
+
+  return (
+    <section className="data-section" aria-label="Conference search queries">
+      <div>
+        <p className="eyebrow">Research</p>
+        <h4>Saved search prompts</h4>
+      </div>
+      <div className="query-list">
+        {queries.map((query) => (
+          <code key={query}>{query}</code>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ConferenceTemplatesTab() {
+  const templates = [
+    ["Conference", conferenceCsvTemplate],
+    ["Company", conferenceCompanyCsvTemplate],
+    ["People", conferencePersonCsvTemplate],
+    ["Meeting", conferenceMeetingCsvTemplate]
+  ] as const;
+
+  return (
+    <section className="data-section" aria-label="Conference CSV templates">
+      <div>
+        <p className="eyebrow">Templates</p>
+        <h4>CSV starting points</h4>
+      </div>
+      <div className="template-grid">
+        {templates.map(([label, value]) => (
+          <label key={label}>
+            <span>{label}</span>
+            <textarea className="template-box" readOnly value={value} />
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ConferenceAccessTab({ conference }: { conference: Conference }) {
+  const organizerName = conference.organizerContact || "Name";
+  const template = [
+    `Subject: Attendee and networking access for ${conference.name}`,
+    "",
+    `Hi ${organizerName},`,
+    "",
+    `I'm evaluating whether ${conference.name} is a good fit for our conference outreach.`,
+    "",
+    "Could you confirm what attendee access is available to registered participants or sponsors?",
+    "",
+    "Specifically, I'd like to understand:",
+    "1. Whether there is an opt in attendee directory or networking app",
+    "2. Whether sponsors receive access to attendee names, company names, titles, or meeting requests",
+    "3. Whether lead retrieval is available through badge scanning",
+    "4. Whether attendee contact details are shared, and on what consent basis",
+    "5. Whether exports are permitted or access is limited to the event platform",
+    "",
+    "Our team focuses on senior advisory across capital strategy, real world assets, private markets, market entry, and strategic partnerships, so we are mainly looking to identify relevant senior attendees and schedule meetings appropriately.",
+    "",
+    "Best,"
+  ].join("\n");
+
+  return (
+    <section className="data-section" aria-label="Organizer access request">
+      <div>
+        <p className="eyebrow">Legitimate access</p>
+        <h4>Organizer email</h4>
+      </div>
+      <textarea className="template-box" readOnly value={template} />
+      <p className="table-subtext">
+        Avoid private attendee-app scraping, login-wall bypassing, and questionable attendee-list purchases.
+      </p>
+    </section>
   );
 }
 
@@ -4021,6 +6722,7 @@ function TaskQueue({
   opportunities,
   accountsById,
   contactsById,
+  conferencePeopleById,
   currentUserId,
   dueFilter,
   leads,
@@ -4035,6 +6737,7 @@ function TaskQueue({
   opportunities: Opportunity[];
   accountsById: Map<string, Account>;
   contactsById: Map<string, Contact>;
+  conferencePeopleById: Map<string, ConferencePerson>;
   currentUserId: string;
   dueFilter: TaskDueFilter;
   leads: Lead[];
@@ -4181,10 +6884,15 @@ function TaskQueue({
           const parentContact =
             task.parent?.type === "contact" ? contactsById.get(task.parent.id) : undefined;
           const parentLead = task.parent?.type === "lead" ? leadsById.get(task.parent.id) : undefined;
+          const parentConferencePerson =
+            task.parent?.type === "conference_person"
+              ? conferencePeopleById.get(task.parent.id)
+              : undefined;
           const parentName =
             parentAccount?.name ??
             (parentContact ? `${parentContact.firstName} ${parentContact.lastName}` : undefined) ??
             parentLead?.contactName ??
+            parentConferencePerson?.name ??
             "Unlinked";
 
           return (
@@ -4655,16 +7363,300 @@ function CustomFieldInput({
   );
 }
 
+function emptyConferenceCreateDraft(): ConferenceCreateDraft {
+  return {
+    name: "",
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: "",
+    location: "",
+    website: "",
+    audienceType: "",
+    organizerContact: "",
+    sponsorPackageLink: "",
+    appName: "",
+    sourceNotes: ""
+  };
+}
+
+function emptyConferenceCompanyDraft(): ConferenceCompanyDraft {
+  return {
+    company: "",
+    website: "",
+    conferenceRole: "other",
+    sector: "",
+    companyScore: "0",
+    sourceUrl: "",
+    sourceNotes: "",
+    rwaRelevance: false,
+    privateMarketsRelevance: false,
+    fundraisingRelevance: false,
+    marketEntryRelevance: false,
+    partnershipRelevance: false
+  };
+}
+
+function emptyConferencePersonDraft(): ConferencePersonDraft {
+  return {
+    name: "",
+    title: "",
+    conferenceCompanyId: "",
+    linkedIn: "",
+    email: "",
+    conferenceSignal: "",
+    icpCategory: "unknown",
+    buyingSignal: "",
+    relationshipPath: "",
+    sourceType: "manual_research",
+    source: "",
+    lawfulBasisNotes: "",
+    optOutStatus: "unknown",
+    seniorityScore: "0",
+    companyFitScore: "0",
+    signalScore: "0",
+    conferenceSignalScore: "0",
+    warmIntroScore: "0",
+    timingScore: "0"
+  };
+}
+
+function emptyConferenceMeetingDraft(): ConferenceMeetingDraft {
+  return {
+    conferencePersonId: "",
+    reasonToMeet: "",
+    proposedAsk: "",
+    introPath: "",
+    status: "not_requested",
+    notes: "",
+    nextStep: ""
+  };
+}
+
+function conferenceCreateInput(draft: ConferenceCreateDraft): CreateConferenceInput | null {
+  const name = draft.name.trim();
+  const startDate = draft.startDate.trim();
+  if (!name || !startDate) {
+    return null;
+  }
+
+  return {
+    name,
+    startDate,
+    endDate: draft.endDate.trim() || undefined,
+    location: draft.location.trim() || undefined,
+    website: draft.website.trim() || undefined,
+    audienceType: draft.audienceType.trim() || undefined,
+    organizerContact: draft.organizerContact.trim() || undefined,
+    sponsorPackageLink: draft.sponsorPackageLink.trim() || undefined,
+    appName: draft.appName.trim() || undefined,
+    attendeeAccessStatus: "unknown",
+    sourceNotes: draft.sourceNotes.trim() || undefined
+  };
+}
+
+function conferenceCompanyInput(
+  draft: ConferenceCompanyDraft
+): CreateConferenceCompanyInput | null {
+  const company = draft.company.trim();
+  if (!company) {
+    return null;
+  }
+
+  return {
+    company,
+    website: draft.website.trim() || undefined,
+    conferenceRole: draft.conferenceRole,
+    sector: draft.sector.trim() || undefined,
+    companyScore: numberOrDefault(draft.companyScore, 0),
+    sourceUrl: draft.sourceUrl.trim() || undefined,
+    sourceNotes: draft.sourceNotes.trim() || undefined,
+    rwaRelevance: draft.rwaRelevance,
+    privateMarketsRelevance: draft.privateMarketsRelevance,
+    fundraisingRelevance: draft.fundraisingRelevance,
+    marketEntryRelevance: draft.marketEntryRelevance,
+    partnershipRelevance: draft.partnershipRelevance
+  };
+}
+
+function conferencePersonInput(draft: ConferencePersonDraft): CreateConferencePersonInput | null {
+  const name = draft.name.trim();
+  const title = draft.title.trim();
+  const email = draft.email.trim();
+  const lawfulBasisNotes = draft.lawfulBasisNotes.trim();
+  if (!name || !title || (email && !lawfulBasisNotes)) {
+    return null;
+  }
+
+  return {
+    conferenceCompanyId: draft.conferenceCompanyId || undefined,
+    name,
+    title,
+    linkedIn: draft.linkedIn.trim() || undefined,
+    email: email || undefined,
+    conferenceSignal: draft.conferenceSignal.trim() || undefined,
+    icpCategory: draft.icpCategory,
+    buyingSignal: draft.buyingSignal.trim() || undefined,
+    relationshipPath: draft.relationshipPath.trim() || undefined,
+    outreachStatus: "not_started",
+    sourceType: draft.sourceType,
+    source: draft.source.trim() || undefined,
+    lawfulBasisNotes: lawfulBasisNotes || undefined,
+    optOutStatus: draft.optOutStatus,
+    seniorityScore: numberOrDefault(draft.seniorityScore, 0),
+    companyFitScore: numberOrDefault(draft.companyFitScore, 0),
+    signalScore: numberOrDefault(draft.signalScore, 0),
+    conferenceSignalScore: numberOrDefault(draft.conferenceSignalScore, 0),
+    warmIntroScore: numberOrDefault(draft.warmIntroScore, 0),
+    timingScore: numberOrDefault(draft.timingScore, 0)
+  };
+}
+
+function conferenceMeetingInput(draft: ConferenceMeetingDraft): CreateConferenceMeetingInput | null {
+  const conferencePersonId = draft.conferencePersonId.trim();
+  const reasonToMeet = draft.reasonToMeet.trim();
+  if (!conferencePersonId || !reasonToMeet) {
+    return null;
+  }
+
+  return {
+    conferencePersonId,
+    reasonToMeet,
+    proposedAsk: draft.proposedAsk.trim() || undefined,
+    introPath: draft.introPath.trim() || undefined,
+    status: draft.status,
+    notes: draft.notes.trim() || undefined,
+    nextStep: draft.nextStep.trim() || undefined
+  };
+}
+
+function numberOrDefault(value: string, fallback: number) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function conferenceTotalScore(score: {
+  seniorityScore: number;
+  companyFitScore: number;
+  signalScore: number;
+  conferenceSignalScore: number;
+  warmIntroScore: number;
+  timingScore: number;
+}) {
+  return (
+    score.seniorityScore +
+    score.companyFitScore +
+    score.signalScore +
+    score.conferenceSignalScore +
+    score.warmIntroScore +
+    score.timingScore
+  );
+}
+
+function conferencePriorityBand(totalScore: number): ConferencePriorityBand {
+  if (totalScore >= 16) {
+    return "request_meeting";
+  }
+  if (totalScore >= 12) {
+    return "personalized_outreach";
+  }
+  if (totalScore >= 8) {
+    return "nurture";
+  }
+  return "do_not_prioritize";
+}
+
+function outreachStatusRequiresPermission(status: ConferenceOutreachStatus) {
+  return (
+    status === "queued" ||
+    status === "contacted" ||
+    status === "meeting_requested" ||
+    status === "meeting_booked"
+  );
+}
+
+function domainFromUrl(value: string | null | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+function splitPersonName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] ?? "Unknown",
+    lastName: parts.slice(1).join(" ") || "Unknown"
+  };
+}
+
+function companyFitLabels(company: ConferenceCompany) {
+  return [
+    company.rwaRelevance ? "RWA" : "",
+    company.privateMarketsRelevance ? "Private markets" : "",
+    company.fundraisingRelevance ? "Fundraising" : "",
+    company.marketEntryRelevance ? "Market entry" : "",
+    company.partnershipRelevance ? "Partnerships" : ""
+  ].filter(Boolean);
+}
+
+function tabLabel(tab: ConferenceTab) {
+  switch (tab) {
+    case "companies":
+      return "Companies";
+    case "people":
+      return "People";
+    case "meetings":
+      return "Meetings";
+    case "queries":
+      return "Search queries";
+    case "templates":
+      return "Templates";
+    case "access":
+      return "Organizer access";
+  }
+}
+
+function formatLabel(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+function conferenceSearchQueries(conferenceName: string) {
+  return [
+    `"${conferenceName}" "tokenization"`,
+    `"${conferenceName}" "real world assets"`,
+    `"${conferenceName}" "RWA"`,
+    `"${conferenceName}" "private markets"`,
+    `"${conferenceName}" "capital formation"`,
+    `"${conferenceName}" "fundraising"`,
+    `"${conferenceName}" "market infrastructure"`,
+    `"${conferenceName}" "speaker" "digital assets"`,
+    `"${conferenceName}" "sponsor" "private markets"`,
+    `"${conferenceName}" "exhibitor" "tokenization"`,
+    `"${conferenceName}" "attending" "founder"`,
+    `"${conferenceName}" "see you at"`,
+    `site:linkedin.com/in "${conferenceName}" "attending"`,
+    `site:linkedin.com/posts "${conferenceName}" "attending"`
+  ];
+}
+
 function viewModeTitle(viewMode: ViewMode) {
   switch (viewMode) {
     case "pipeline":
       return "Pipeline";
     case "leads":
       return "Leads";
+    case "network":
+      return "Network";
     case "accounts":
       return "Accounts";
     case "contacts":
       return "Contacts";
+    case "conferences":
+      return "Conferences";
     case "data":
       return "Data";
   }
@@ -4674,8 +7666,10 @@ function parseViewMode(value: string | null): ViewMode | null {
   if (
     value === "pipeline" ||
     value === "leads" ||
+    value === "network" ||
     value === "accounts" ||
     value === "contacts" ||
+    value === "conferences" ||
     value === "data"
   ) {
     return value;
@@ -4887,6 +7881,25 @@ function formatCustomFieldValue(value: CustomFieldPrimitive | undefined): string
   }
 
   return String(value);
+}
+
+function leadCustomFieldString(lead: Lead, key: string): string {
+  return formatCustomFieldValue(lead.customFields[key]);
+}
+
+function isLinkedInProspectLead(lead: Lead | undefined | null): boolean {
+  return Boolean(
+    lead &&
+      (lead.source === "linkedin_prospect_queue" ||
+        leadCustomFieldString(lead, "linkedin_profile_url") ||
+        leadCustomFieldString(lead, "linkedin_review_status"))
+  );
+}
+
+function uniqueSorted(values: string[]) {
+  return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
+    left.localeCompare(right)
+  );
 }
 
 function recordLabel(record: CustomFieldRecord) {

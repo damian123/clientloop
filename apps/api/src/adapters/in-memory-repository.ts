@@ -1,6 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   assertCan,
+  assertConferenceEmailLawfulBasis,
+  assertConferenceOutreachAllowed,
   assertValidCustomFieldDefinition,
   changeOpportunityStage,
   completeTask as completeTaskRule,
@@ -9,11 +11,16 @@ import {
   createDomainEvent,
   createSeedData,
   normalizeCustomFieldKey,
+  scoreConferenceProspect,
   targetFromRecord,
   validateCustomFieldPatch,
   type AccessPrincipal,
   type Account,
   type Activity,
+  type Conference,
+  type ConferenceCompany,
+  type ConferenceMeeting,
+  type ConferencePerson,
   type Contact,
   type CRMRecord,
   type CustomFieldDefinition,
@@ -34,6 +41,10 @@ import type {
   ConvertLeadInput,
   CreateActivityInput,
   CreateAccountInput,
+  CreateConferenceCompanyInput,
+  CreateConferenceInput,
+  CreateConferenceMeetingInput,
+  CreateConferencePersonInput,
   CreateContactInput,
   CreateCustomFieldDefinitionInput,
   CreateLeadInput,
@@ -47,6 +58,11 @@ import type {
   ListQuery,
   SearchQuery,
   SearchResult,
+  ScoreConferencePersonInput,
+  UpdateConferenceCompanyInput,
+  UpdateConferenceInput,
+  UpdateConferenceMeetingInput,
+  UpdateConferencePersonInput,
   UpdateActivityInput,
   UpdateCustomFieldValuesInput,
   UpdateNoteInput,
@@ -62,6 +78,10 @@ interface Store {
   contacts: Contact[];
   leads: Lead[];
   opportunities: Opportunity[];
+  conferences: Conference[];
+  conferenceCompanies: ConferenceCompany[];
+  conferencePeople: ConferencePerson[];
+  conferenceMeetings: ConferenceMeeting[];
   tasks: Task[];
   notes: Note[];
   activities: Activity[];
@@ -104,6 +124,10 @@ export class InMemoryCRMRepository implements CRMRepository {
       contacts: this.byTenant(this.store.contacts, tenantId),
       leads: this.byTenant(this.store.leads, tenantId),
       opportunities: this.byTenant(this.store.opportunities, tenantId),
+      conferences: this.byTenant(this.store.conferences, tenantId),
+      conferenceCompanies: this.byTenant(this.store.conferenceCompanies, tenantId),
+      conferencePeople: this.byTenant(this.store.conferencePeople, tenantId),
+      conferenceMeetings: this.byTenant(this.store.conferenceMeetings, tenantId),
       tasks: this.byTenant(this.store.tasks, tenantId),
       notes: this.byTenant(this.store.notes, tenantId),
       activities: this.byTenant(this.store.activities, tenantId),
@@ -404,6 +428,434 @@ export class InMemoryCRMRepository implements CRMRepository {
       this.idempotencyResults.set(idempotencyScope, updated);
     }
 
+    return updated;
+  }
+
+  async listConferences(tenantId: TenantId, query: ListQuery): Promise<Page<Conference>> {
+    return this.page(this.filterByText(this.byTenant(this.store.conferences, tenantId), query.q, [
+      "name",
+      "location",
+      "audienceType",
+      "attendeeAccessStatus",
+      "sourceNotes"
+    ]), query.limit);
+  }
+
+  async createConference(
+    principal: AccessPrincipal,
+    input: CreateConferenceInput
+  ): Promise<Conference> {
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    const now = new Date().toISOString();
+    const conference: Conference = {
+      id: randomUUID(),
+      name: input.name,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      location: input.location,
+      website: input.website,
+      audienceType: input.audienceType,
+      organizerContact: input.organizerContact,
+      sponsorPackageLink: input.sponsorPackageLink,
+      appName: input.appName,
+      attendeeAccessStatus: input.attendeeAccessStatus,
+      sourceNotes: input.sourceNotes,
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+
+    this.store.conferences.unshift(conference);
+    this.enqueueEvent("conference.created", "conference", conference.id, principal, now, {
+      name: conference.name
+    });
+    return conference;
+  }
+
+  async updateConference(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceInput;
+  }): Promise<Conference> {
+    const index = this.store.conferences.findIndex(
+      (conference) =>
+        conference.tenantId === input.principal.tenantId && conference.id === input.id
+    );
+
+    if (index < 0) {
+      throw new Error("Conference not found");
+    }
+
+    const current = this.store.conferences[index]!;
+    assertCan(input.principal, "conference", "update", targetFromRecord(current));
+    const now = new Date().toISOString();
+    const updated: Conference = {
+      ...current,
+      name: input.body.name ?? current.name,
+      startDate: input.body.startDate ?? current.startDate,
+      endDate: input.body.endDate === undefined ? current.endDate : input.body.endDate,
+      location: input.body.location === undefined ? current.location : input.body.location,
+      website: input.body.website === undefined ? current.website : input.body.website,
+      audienceType:
+        input.body.audienceType === undefined ? current.audienceType : input.body.audienceType,
+      organizerContact:
+        input.body.organizerContact === undefined
+          ? current.organizerContact
+          : input.body.organizerContact,
+      sponsorPackageLink:
+        input.body.sponsorPackageLink === undefined
+          ? current.sponsorPackageLink
+          : input.body.sponsorPackageLink,
+      appName: input.body.appName === undefined ? current.appName : input.body.appName,
+      attendeeAccessStatus: input.body.attendeeAccessStatus ?? current.attendeeAccessStatus,
+      sourceNotes: input.body.sourceNotes === undefined ? current.sourceNotes : input.body.sourceNotes,
+      updatedAt: now,
+      updatedBy: input.principal.user.id,
+      version: this.assertExpectedVersion(current, input.body.expectedVersion) + 1
+    };
+
+    this.store.conferences[index] = updated;
+    this.enqueueEvent("conference.updated", "conference", updated.id, input.principal, now, {
+      version: updated.version
+    });
+    return updated;
+  }
+
+  async listConferenceCompanies(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferenceCompany>> {
+    return this.page(
+      this.filterByText(
+        this.byTenant(this.store.conferenceCompanies, tenantId).filter(
+          (company) => company.conferenceId === conferenceId
+        ),
+        query.q,
+        ["company", "website", "conferenceRole", "sector", "sourceUrl", "sourceNotes"]
+      ),
+      query.limit
+    );
+  }
+
+  async createConferenceCompany(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferenceCompanyInput
+  ): Promise<ConferenceCompany> {
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    this.assertConferenceExists(principal.tenantId, conferenceId);
+    const now = new Date().toISOString();
+    const company: ConferenceCompany = {
+      id: randomUUID(),
+      conferenceId,
+      accountId: input.accountId,
+      company: input.company,
+      website: input.website,
+      conferenceRole: input.conferenceRole,
+      sector: input.sector,
+      rwaRelevance: input.rwaRelevance,
+      privateMarketsRelevance: input.privateMarketsRelevance,
+      fundraisingRelevance: input.fundraisingRelevance,
+      marketEntryRelevance: input.marketEntryRelevance,
+      partnershipRelevance: input.partnershipRelevance,
+      companyScore: input.companyScore,
+      sourceUrl: input.sourceUrl,
+      sourceNotes: input.sourceNotes,
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+
+    this.store.conferenceCompanies.unshift(company);
+    return company;
+  }
+
+  async updateConferenceCompany(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceCompanyInput;
+  }): Promise<ConferenceCompany> {
+    const index = this.store.conferenceCompanies.findIndex(
+      (company) => company.tenantId === input.principal.tenantId && company.id === input.id
+    );
+
+    if (index < 0) {
+      throw new Error("Conference company not found");
+    }
+
+    const current = this.store.conferenceCompanies[index]!;
+    assertCan(input.principal, "conference", "update", targetFromRecord(current));
+    const now = new Date().toISOString();
+    const updated: ConferenceCompany = {
+      ...current,
+      accountId: input.body.accountId === undefined ? current.accountId : input.body.accountId,
+      company: input.body.company ?? current.company,
+      website: input.body.website === undefined ? current.website : input.body.website,
+      conferenceRole: input.body.conferenceRole ?? current.conferenceRole,
+      sector: input.body.sector === undefined ? current.sector : input.body.sector,
+      rwaRelevance: input.body.rwaRelevance ?? current.rwaRelevance,
+      privateMarketsRelevance:
+        input.body.privateMarketsRelevance ?? current.privateMarketsRelevance,
+      fundraisingRelevance: input.body.fundraisingRelevance ?? current.fundraisingRelevance,
+      marketEntryRelevance: input.body.marketEntryRelevance ?? current.marketEntryRelevance,
+      partnershipRelevance: input.body.partnershipRelevance ?? current.partnershipRelevance,
+      companyScore: input.body.companyScore ?? current.companyScore,
+      sourceUrl: input.body.sourceUrl === undefined ? current.sourceUrl : input.body.sourceUrl,
+      sourceNotes:
+        input.body.sourceNotes === undefined ? current.sourceNotes : input.body.sourceNotes,
+      updatedAt: now,
+      updatedBy: input.principal.user.id,
+      version: this.assertExpectedVersion(current, input.body.expectedVersion) + 1
+    };
+
+    this.store.conferenceCompanies[index] = updated;
+    return updated;
+  }
+
+  async listConferencePeople(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferencePerson>> {
+    const people = this.byTenant(this.store.conferencePeople, tenantId)
+      .filter((person) => person.conferenceId === conferenceId)
+      .sort((left, right) => right.totalScore - left.totalScore);
+
+    return this.page(
+      this.filterByText(people, query.q, [
+        "name",
+        "title",
+        "conferenceSignal",
+        "icpCategory",
+        "buyingSignal",
+        "relationshipPath",
+        "outreachStatus",
+        "sourceType",
+        "source",
+        "priorityBand"
+      ]),
+      query.limit
+    );
+  }
+
+  async createConferencePerson(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferencePersonInput
+  ): Promise<ConferencePerson> {
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    this.assertConferenceExists(principal.tenantId, conferenceId);
+    assertConferenceEmailLawfulBasis(input);
+    assertConferenceOutreachAllowed(input);
+    const now = new Date().toISOString();
+    const score = scoreConferenceProspect(input);
+    const person: ConferencePerson = {
+      id: randomUUID(),
+      conferenceId,
+      conferenceCompanyId: input.conferenceCompanyId,
+      accountId: input.accountId,
+      contactId: input.contactId,
+      name: input.name,
+      title: input.title,
+      linkedIn: input.linkedIn,
+      email: input.email,
+      conferenceSignal: input.conferenceSignal,
+      icpCategory: input.icpCategory,
+      buyingSignal: input.buyingSignal,
+      relationshipPath: input.relationshipPath,
+      outreachStatus: input.outreachStatus,
+      sourceType: input.sourceType,
+      source: input.source,
+      lawfulBasisNotes: input.lawfulBasisNotes,
+      optOutStatus: input.optOutStatus,
+      ...score,
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+
+    this.store.conferencePeople.unshift(person);
+    return person;
+  }
+
+  async updateConferencePerson(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferencePersonInput;
+  }): Promise<ConferencePerson> {
+    const index = this.store.conferencePeople.findIndex(
+      (person) => person.tenantId === input.principal.tenantId && person.id === input.id
+    );
+
+    if (index < 0) {
+      throw new Error("Conference person not found");
+    }
+
+    const current = this.store.conferencePeople[index]!;
+    assertCan(input.principal, "conference", "update", targetFromRecord(current));
+    const now = new Date().toISOString();
+    const score = scoreConferenceProspect({
+      seniorityScore: input.body.seniorityScore ?? current.seniorityScore,
+      companyFitScore: input.body.companyFitScore ?? current.companyFitScore,
+      signalScore: input.body.signalScore ?? current.signalScore,
+      conferenceSignalScore:
+        input.body.conferenceSignalScore ?? current.conferenceSignalScore,
+      warmIntroScore: input.body.warmIntroScore ?? current.warmIntroScore,
+      timingScore: input.body.timingScore ?? current.timingScore
+    });
+    const updated: ConferencePerson = {
+      ...current,
+      conferenceCompanyId:
+        input.body.conferenceCompanyId === undefined
+          ? current.conferenceCompanyId
+          : input.body.conferenceCompanyId,
+      accountId: input.body.accountId === undefined ? current.accountId : input.body.accountId,
+      contactId: input.body.contactId === undefined ? current.contactId : input.body.contactId,
+      name: input.body.name ?? current.name,
+      title: input.body.title ?? current.title,
+      linkedIn: input.body.linkedIn === undefined ? current.linkedIn : input.body.linkedIn,
+      email: input.body.email === undefined ? current.email : input.body.email,
+      conferenceSignal:
+        input.body.conferenceSignal === undefined
+          ? current.conferenceSignal
+          : input.body.conferenceSignal,
+      icpCategory: input.body.icpCategory ?? current.icpCategory,
+      buyingSignal:
+        input.body.buyingSignal === undefined ? current.buyingSignal : input.body.buyingSignal,
+      relationshipPath:
+        input.body.relationshipPath === undefined
+          ? current.relationshipPath
+          : input.body.relationshipPath,
+      outreachStatus: input.body.outreachStatus ?? current.outreachStatus,
+      sourceType: input.body.sourceType ?? current.sourceType,
+      source: input.body.source === undefined ? current.source : input.body.source,
+      lawfulBasisNotes:
+        input.body.lawfulBasisNotes === undefined
+          ? current.lawfulBasisNotes
+          : input.body.lawfulBasisNotes,
+      optOutStatus: input.body.optOutStatus ?? current.optOutStatus,
+      ...score,
+      updatedAt: now,
+      updatedBy: input.principal.user.id,
+      version: this.assertExpectedVersion(current, input.body.expectedVersion) + 1
+    };
+    assertConferenceEmailLawfulBasis(updated);
+    assertConferenceOutreachAllowed(updated);
+
+    this.store.conferencePeople[index] = updated;
+    return updated;
+  }
+
+  async scoreConferencePerson(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: ScoreConferencePersonInput;
+  }): Promise<ConferencePerson> {
+    const updated = await this.updateConferencePerson({
+      principal: input.principal,
+      id: input.id,
+      body: {
+        expectedVersion: input.body.expectedVersion,
+        seniorityScore: input.body.seniorityScore,
+        companyFitScore: input.body.companyFitScore,
+        signalScore: input.body.signalScore,
+        conferenceSignalScore: input.body.conferenceSignalScore,
+        warmIntroScore: input.body.warmIntroScore,
+        timingScore: input.body.timingScore
+      }
+    });
+    this.enqueueEvent(
+      "conference_person.scored",
+      "conference_person",
+      updated.id,
+      input.principal,
+      updated.updatedAt,
+      {
+        totalScore: updated.totalScore,
+        priorityBand: updated.priorityBand,
+        scoreNotes: input.body.scoreNotes ?? null
+      }
+    );
+    return updated;
+  }
+
+  async listConferenceMeetings(
+    tenantId: TenantId,
+    conferenceId: string,
+    query: ListQuery
+  ): Promise<Page<ConferenceMeeting>> {
+    return this.page(
+      this.filterByText(
+        this.byTenant(this.store.conferenceMeetings, tenantId).filter(
+          (meeting) => meeting.conferenceId === conferenceId
+        ),
+        query.q,
+        ["reasonToMeet", "proposedAsk", "introPath", "status", "notes", "nextStep"]
+      ),
+      query.limit
+    );
+  }
+
+  async createConferenceMeeting(
+    principal: AccessPrincipal,
+    conferenceId: string,
+    input: CreateConferenceMeetingInput
+  ): Promise<ConferenceMeeting> {
+    assertCan(principal, "conference", "create", { tenantId: principal.tenantId });
+    const person = this.findConferencePerson(principal.tenantId, input.conferencePersonId);
+    if (person.conferenceId !== conferenceId) {
+      throw new Error("Conference person not found");
+    }
+    this.assertMeetingAllowed(person, input.status);
+    const now = new Date().toISOString();
+    const meeting: ConferenceMeeting = {
+      id: randomUUID(),
+      conferenceId,
+      conferencePersonId: input.conferencePersonId,
+      reasonToMeet: input.reasonToMeet,
+      proposedAsk: input.proposedAsk,
+      introPath: input.introPath,
+      status: input.status,
+      notes: input.notes,
+      nextStep: input.nextStep,
+      ...createAuditFields({ tenantId: principal.tenantId, actorUserId: principal.user.id, now })
+    };
+
+    this.store.conferenceMeetings.unshift(meeting);
+    return meeting;
+  }
+
+  async updateConferenceMeeting(input: {
+    principal: AccessPrincipal;
+    id: string;
+    body: UpdateConferenceMeetingInput;
+  }): Promise<ConferenceMeeting> {
+    const index = this.store.conferenceMeetings.findIndex(
+      (meeting) => meeting.tenantId === input.principal.tenantId && meeting.id === input.id
+    );
+
+    if (index < 0) {
+      throw new Error("Conference meeting not found");
+    }
+
+    const current = this.store.conferenceMeetings[index]!;
+    const person = this.findConferencePerson(input.principal.tenantId, current.conferencePersonId);
+    assertCan(input.principal, "conference", "update", targetFromRecord(current));
+    this.assertMeetingAllowed(person, input.body.status ?? current.status);
+    const now = new Date().toISOString();
+    const updated: ConferenceMeeting = {
+      ...current,
+      reasonToMeet: input.body.reasonToMeet ?? current.reasonToMeet,
+      proposedAsk: input.body.proposedAsk === undefined ? current.proposedAsk : input.body.proposedAsk,
+      introPath: input.body.introPath === undefined ? current.introPath : input.body.introPath,
+      status: input.body.status ?? current.status,
+      notes: input.body.notes === undefined ? current.notes : input.body.notes,
+      nextStep: input.body.nextStep === undefined ? current.nextStep : input.body.nextStep,
+      updatedAt: now,
+      updatedBy: input.principal.user.id,
+      version: this.assertExpectedVersion(current, input.body.expectedVersion) + 1
+    };
+
+    this.store.conferenceMeetings[index] = updated;
+    this.enqueueEvent("conference_meeting.updated", "conference_meeting", updated.id, input.principal, now, {
+      status: updated.status,
+      version: updated.version
+    });
     return updated;
   }
 
@@ -737,6 +1189,30 @@ export class InMemoryCRMRepository implements CRMRepository {
         description: [opportunity.stage, stringifySearchValue(opportunity.customFields)]
           .filter(Boolean)
           .join(" ")
+      })),
+      ...this.byTenant(this.store.conferences, tenantId).map((conference) => ({
+        type: "conference" as const,
+        id: conference.id,
+        label: conference.name,
+        description: [conference.location, conference.audienceType, conference.attendeeAccessStatus]
+          .filter(Boolean)
+          .join(" ")
+      })),
+      ...this.byTenant(this.store.conferenceCompanies, tenantId).map((company) => ({
+        type: "conference_company" as const,
+        id: company.id,
+        label: company.company,
+        description: [company.conferenceRole, company.sector, company.sourceUrl]
+          .filter(Boolean)
+          .join(" ")
+      })),
+      ...this.byTenant(this.store.conferencePeople, tenantId).map((person) => ({
+        type: "conference_person" as const,
+        id: person.id,
+        label: person.name,
+        description: [person.title, person.priorityBand, person.buyingSignal]
+          .filter(Boolean)
+          .join(" ")
       }))
     ];
 
@@ -1012,6 +1488,46 @@ export class InMemoryCRMRepository implements CRMRepository {
       amount: opportunity.amount ?? null
     });
     return opportunity;
+  }
+
+  private assertConferenceExists(tenantId: TenantId, conferenceId: string): Conference {
+    const conference = this.store.conferences.find(
+      (candidate) =>
+        candidate.tenantId === tenantId && candidate.id === conferenceId && !candidate.archivedAt
+    );
+
+    if (!conference) {
+      throw new Error("Conference not found");
+    }
+
+    return conference;
+  }
+
+  private findConferencePerson(tenantId: TenantId, personId: string): ConferencePerson {
+    const person = this.store.conferencePeople.find(
+      (candidate) => candidate.tenantId === tenantId && candidate.id === personId && !candidate.archivedAt
+    );
+
+    if (!person) {
+      throw new Error("Conference person not found");
+    }
+
+    return person;
+  }
+
+  private assertMeetingAllowed(
+    person: ConferencePerson,
+    status: ConferenceMeeting["status"]
+  ): void {
+    assertConferenceOutreachAllowed({
+      optOutStatus: person.optOutStatus,
+      outreachStatus:
+        status === "requested"
+          ? "meeting_requested"
+          : status === "booked"
+            ? "meeting_booked"
+            : person.outreachStatus
+    });
   }
 
   private enqueueEvent(

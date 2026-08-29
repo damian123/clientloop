@@ -56,6 +56,87 @@ enum OutboxStatus {
   failed
 }
 
+enum AttendeeAccessStatus {
+  unknown
+  unavailable
+  registered_only
+  sponsor_directory
+  opt_in_directory
+  lead_retrieval
+  post_event_opt_in
+}
+
+enum ConferenceRole {
+  speaker
+  moderator
+  sponsor
+  exhibitor
+  startup_showcase
+  award_finalist
+  side_event_host
+  attendee
+  organizer
+  partner
+  other
+}
+
+enum ConferenceSourceType {
+  official_directory
+  sponsor_access
+  speaker_agenda
+  sponsor_exhibitor_list
+  startup_showcase
+  linkedin_public
+  side_event_rsvp
+  warm_network
+  press_release
+  manual_research
+}
+
+enum ConferenceIcpCategory {
+  founder_operator
+  asset_owner
+  private_markets
+  fintech_digital_assets
+  investor_allocator
+  strategic_partner
+  lower_priority
+  unknown
+}
+
+enum ConferenceOutreachStatus {
+  not_started
+  queued
+  contacted
+  replied
+  meeting_requested
+  meeting_booked
+  nurturing
+  disqualified
+}
+
+enum ConferenceOptOutStatus {
+  unknown
+  not_opted_out
+  opted_out
+}
+
+enum ConferencePriorityBand {
+  request_meeting
+  personalized_outreach
+  nurture
+  do_not_prioritize
+}
+
+enum ConferenceMeetingStatus {
+  not_requested
+  requested
+  booked
+  declined
+  completed
+  cancelled
+}
+
 model Tenant {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
@@ -68,6 +149,10 @@ model Tenant {
   contacts               Contact[]
   leads                  Lead[]
   opportunities          Opportunity[]
+  conferences            Conference[]
+  conferenceCompanies    ConferenceCompany[]
+  conferencePeople       ConferencePerson[]
+  conferenceMeetings     ConferenceMeeting[]
   tasks                  Task[]
   notes                  Note[]
   activities             Activity[]
@@ -169,9 +254,11 @@ model Account {
   version      Int           @default(1)
   archivedAt   DateTime?     @map("archived_at") @db.Timestamptz(6)
 
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contacts      Contact[]
-  opportunities Opportunity[]
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts            Contact[]
+  opportunities       Opportunity[]
+  conferenceCompanies ConferenceCompany[]
+  conferencePeople    ConferencePerson[]
 
   @@index([tenantId, ownerUserId, status])
   @@index([tenantId, name])
@@ -195,9 +282,10 @@ model Contact {
   version      Int       @default(1)
   archivedAt   DateTime? @map("archived_at") @db.Timestamptz(6)
 
-  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account              Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
   primaryOpportunities Opportunity[]
+  conferencePeople     ConferencePerson[]
 
   @@index([tenantId, accountId, lastName, firstName])
   @@index([tenantId, email])
@@ -258,6 +346,147 @@ model Opportunity {
   @@index([tenantId, ownerUserId, stage, expectedCloseDate(sort: Desc)])
   @@index([tenantId, accountId])
   @@map("opportunities")
+}
+
+model Conference {
+  id                   String               @id @default(uuid()) @db.Uuid
+  tenantId             String               @map("tenant_id") @db.Uuid
+  name                 String
+  startDate            DateTime             @map("start_date") @db.Date
+  endDate              DateTime?            @map("end_date") @db.Date
+  location             String?
+  website              String?
+  audienceType         String?              @map("audience_type")
+  organizerContact     String?              @map("organizer_contact")
+  sponsorPackageLink   String?              @map("sponsor_package_link")
+  appName              String?              @map("app_name")
+  attendeeAccessStatus AttendeeAccessStatus @default(unknown) @map("attendee_access_status")
+  sourceNotes          String?              @map("source_notes")
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy            String               @map("created_by") @db.Uuid
+  updatedBy            String               @map("updated_by") @db.Uuid
+  version              Int                  @default(1)
+  archivedAt           DateTime?            @map("archived_at") @db.Timestamptz(6)
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  companies ConferenceCompany[]
+  people    ConferencePerson[]
+  meetings  ConferenceMeeting[]
+
+  @@index([tenantId, startDate])
+  @@index([tenantId, name])
+  @@map("conferences")
+}
+
+model ConferenceCompany {
+  id                      String         @id @default(uuid()) @db.Uuid
+  tenantId                String         @map("tenant_id") @db.Uuid
+  conferenceId            String         @map("conference_id") @db.Uuid
+  accountId               String?        @map("account_id") @db.Uuid
+  company                 String
+  website                 String?
+  conferenceRole          ConferenceRole @default(other) @map("conference_role")
+  sector                  String?
+  rwaRelevance            Boolean        @default(false) @map("rwa_relevance")
+  privateMarketsRelevance Boolean        @default(false) @map("private_markets_relevance")
+  fundraisingRelevance    Boolean        @default(false) @map("fundraising_relevance")
+  marketEntryRelevance    Boolean        @default(false) @map("market_entry_relevance")
+  partnershipRelevance    Boolean        @default(false) @map("partnership_relevance")
+  companyScore            Int            @default(0) @map("company_score")
+  sourceUrl               String?        @map("source_url")
+  sourceNotes             String?        @map("source_notes")
+  createdAt               DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy               String         @map("created_by") @db.Uuid
+  updatedBy               String         @map("updated_by") @db.Uuid
+  version                 Int            @default(1)
+  archivedAt              DateTime?      @map("archived_at") @db.Timestamptz(6)
+
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conference Conference         @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  account    Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  people     ConferencePerson[]
+
+  @@index([tenantId, conferenceId, company])
+  @@index([tenantId, accountId])
+  @@map("conference_companies")
+}
+
+model ConferencePerson {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  tenantId              String                   @map("tenant_id") @db.Uuid
+  conferenceId          String                   @map("conference_id") @db.Uuid
+  conferenceCompanyId   String?                  @map("conference_company_id") @db.Uuid
+  accountId             String?                  @map("account_id") @db.Uuid
+  contactId             String?                  @map("contact_id") @db.Uuid
+  name                  String
+  title                 String
+  linkedIn              String?                  @map("linkedin")
+  email                 String?
+  conferenceSignal      String?                  @map("conference_signal")
+  icpCategory           ConferenceIcpCategory    @default(unknown) @map("icp_category")
+  buyingSignal          String?                  @map("buying_signal")
+  relationshipPath      String?                  @map("relationship_path")
+  outreachStatus        ConferenceOutreachStatus @default(not_started) @map("outreach_status")
+  sourceType            ConferenceSourceType     @default(manual_research) @map("source_type")
+  source                String?
+  lawfulBasisNotes      String?                  @map("lawful_basis_notes")
+  optOutStatus          ConferenceOptOutStatus   @default(unknown) @map("opt_out_status")
+  seniorityScore        Int                      @default(0) @map("seniority_score")
+  companyFitScore       Int                      @default(0) @map("company_fit_score")
+  signalScore           Int                      @default(0) @map("signal_score")
+  conferenceSignalScore Int                      @default(0) @map("conference_signal_score")
+  warmIntroScore        Int                      @default(0) @map("warm_intro_score")
+  timingScore           Int                      @default(0) @map("timing_score")
+  totalScore            Int                      @default(0) @map("total_score")
+  priorityBand          ConferencePriorityBand   @default(do_not_prioritize) @map("priority_band")
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy             String                   @map("created_by") @db.Uuid
+  updatedBy             String                   @map("updated_by") @db.Uuid
+  version               Int                      @default(1)
+  archivedAt            DateTime?                @map("archived_at") @db.Timestamptz(6)
+
+  tenant     Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conference Conference          @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  company    ConferenceCompany?  @relation(fields: [conferenceCompanyId], references: [id], onDelete: SetNull)
+  account    Account?            @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  contact    Contact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  meetings   ConferenceMeeting[]
+
+  @@index([tenantId, conferenceId, priorityBand, totalScore])
+  @@index([tenantId, conferenceCompanyId])
+  @@index([tenantId, accountId])
+  @@index([tenantId, contactId])
+  @@map("conference_people")
+}
+
+model ConferenceMeeting {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  tenantId           String                  @map("tenant_id") @db.Uuid
+  conferenceId       String                  @map("conference_id") @db.Uuid
+  conferencePersonId String                  @map("conference_person_id") @db.Uuid
+  reasonToMeet       String                  @map("reason_to_meet")
+  proposedAsk        String?                 @map("proposed_ask")
+  introPath          String?                 @map("intro_path")
+  status             ConferenceMeetingStatus @default(not_requested)
+  notes              String?
+  nextStep           String?                 @map("next_step")
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy          String                  @map("created_by") @db.Uuid
+  updatedBy          String                  @map("updated_by") @db.Uuid
+  version            Int                     @default(1)
+  archivedAt         DateTime?               @map("archived_at") @db.Timestamptz(6)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conference Conference       @relation(fields: [conferenceId], references: [id], onDelete: Cascade)
+  person     ConferencePerson @relation(fields: [conferencePersonId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, conferenceId, status])
+  @@index([tenantId, conferencePersonId])
+  @@map("conference_meetings")
 }
 
 model Task {
@@ -326,20 +555,20 @@ model Activity {
 }
 
 model CustomFieldDefinition {
-  id          String   @id @default(uuid()) @db.Uuid
-  tenantId    String   @map("tenant_id") @db.Uuid
-  entityType  String   @map("entity_type")
-  key         String
-  label       String
-  fieldType   String   @map("field_type")
-  required    Boolean  @default(false)
-  isIndexed   Boolean  @default(false) @map("is_indexed")
-  schema      Json     @default("{}")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
-  createdBy   String   @map("created_by") @db.Uuid
-  updatedBy   String   @map("updated_by") @db.Uuid
-  version     Int      @default(1)
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  entityType String   @map("entity_type")
+  key        String
+  label      String
+  fieldType  String   @map("field_type")
+  required   Boolean  @default(false)
+  isIndexed  Boolean  @default(false) @map("is_indexed")
+  schema     Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy  String   @map("created_by") @db.Uuid
+  updatedBy  String   @map("updated_by") @db.Uuid
+  version    Int      @default(1)
 
   tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   values CustomFieldValue[]

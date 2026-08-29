@@ -3,6 +3,7 @@ node_modules
 .next
 dist
 coverage
+outputs
 playwright-report
 test-results
 .env

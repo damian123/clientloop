@@ -11,6 +11,7 @@
     "dev": "npm run dev:api & npm run dev:web",
     "dev:api": "npm run dev -w @clientloop/api",
     "dev:web": "npm run dev -w @clientloop/web",
+    "postinstall": "prisma generate",
     "build": "npm run build -w @clientloop/api && npm run build -w @clientloop/web",
     "db:install": "scripts/db-local.sh install",
     "db:up": "scripts/db-local.sh start",
@@ -18,7 +19,10 @@
     "db:setup": "scripts/db-local.sh setup",
     "db:status": "scripts/db-local.sh status",
     "db:reset": "prisma migrate reset",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "crm:export-linkedin-briefs": "tsx scripts/export-linkedin-prospect-briefs.ts",
+    "crm:export-live-signal-handoff": "tsx scripts/export-linkedin-live-signal-handoff.ts",
+    "crm:import-linkedin-prospects": "tsx scripts/import-linkedin-prospects.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run typecheck --workspaces --if-present",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
@@ -27,9 +31,7 @@
     "prisma:seed": "prisma db seed"
   },
   "overrides": {
-    "next@15.5.18": {
-      "postcss": "8.5.14"
-    }
+    "deepmerge-ts": "^8.0.0"
   },
   "dependencies": {
     "@prisma/client": "^6.7.0"

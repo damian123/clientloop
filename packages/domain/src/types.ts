@@ -5,6 +5,10 @@ export type ISODate = string;
 export type CRMEntityType =
   | "account"
   | "contact"
+  | "conference"
+  | "conference_company"
+  | "conference_person"
+  | "conference_meeting"
   | "lead"
   | "opportunity"
   | "activity"
@@ -116,6 +120,150 @@ export interface Opportunity extends AuditFields {
   customFields: Record<string, CustomFieldPrimitive>;
 }
 
+export type AttendeeAccessStatus =
+  | "unknown"
+  | "unavailable"
+  | "registered_only"
+  | "sponsor_directory"
+  | "opt_in_directory"
+  | "lead_retrieval"
+  | "post_event_opt_in";
+
+export type ConferenceRole =
+  | "speaker"
+  | "moderator"
+  | "sponsor"
+  | "exhibitor"
+  | "startup_showcase"
+  | "award_finalist"
+  | "side_event_host"
+  | "attendee"
+  | "organizer"
+  | "partner"
+  | "other";
+
+export type ConferenceSourceType =
+  | "official_directory"
+  | "sponsor_access"
+  | "speaker_agenda"
+  | "sponsor_exhibitor_list"
+  | "startup_showcase"
+  | "linkedin_public"
+  | "side_event_rsvp"
+  | "warm_network"
+  | "press_release"
+  | "manual_research";
+
+export type ConferenceIcpCategory =
+  | "founder_operator"
+  | "asset_owner"
+  | "private_markets"
+  | "fintech_digital_assets"
+  | "investor_allocator"
+  | "strategic_partner"
+  | "lower_priority"
+  | "unknown";
+
+export type ConferenceOutreachStatus =
+  | "not_started"
+  | "queued"
+  | "contacted"
+  | "replied"
+  | "meeting_requested"
+  | "meeting_booked"
+  | "nurturing"
+  | "disqualified";
+
+export type ConferenceOptOutStatus = "unknown" | "not_opted_out" | "opted_out";
+
+export type ConferencePriorityBand =
+  | "request_meeting"
+  | "personalized_outreach"
+  | "nurture"
+  | "do_not_prioritize";
+
+export type ConferenceMeetingStatus =
+  | "not_requested"
+  | "requested"
+  | "booked"
+  | "declined"
+  | "completed"
+  | "cancelled";
+
+export interface Conference extends AuditFields {
+  id: EntityId;
+  name: string;
+  startDate: ISODate;
+  endDate?: ISODate | null | undefined;
+  location?: string | null | undefined;
+  website?: string | null | undefined;
+  audienceType?: string | null | undefined;
+  organizerContact?: string | null | undefined;
+  sponsorPackageLink?: string | null | undefined;
+  appName?: string | null | undefined;
+  attendeeAccessStatus: AttendeeAccessStatus;
+  sourceNotes?: string | null | undefined;
+}
+
+export interface ConferenceCompany extends AuditFields {
+  id: EntityId;
+  conferenceId: EntityId;
+  accountId?: EntityId | null | undefined;
+  company: string;
+  website?: string | null | undefined;
+  conferenceRole: ConferenceRole;
+  sector?: string | null | undefined;
+  rwaRelevance: boolean;
+  privateMarketsRelevance: boolean;
+  fundraisingRelevance: boolean;
+  marketEntryRelevance: boolean;
+  partnershipRelevance: boolean;
+  companyScore: number;
+  sourceUrl?: string | null | undefined;
+  sourceNotes?: string | null | undefined;
+}
+
+export interface ConferencePerson extends AuditFields {
+  id: EntityId;
+  conferenceId: EntityId;
+  conferenceCompanyId?: EntityId | null | undefined;
+  accountId?: EntityId | null | undefined;
+  contactId?: EntityId | null | undefined;
+  name: string;
+  title: string;
+  linkedIn?: string | null | undefined;
+  email?: string | null | undefined;
+  conferenceSignal?: string | null | undefined;
+  icpCategory: ConferenceIcpCategory;
+  buyingSignal?: string | null | undefined;
+  relationshipPath?: string | null | undefined;
+  outreachStatus: ConferenceOutreachStatus;
+  sourceType: ConferenceSourceType;
+  source?: string | null | undefined;
+  lawfulBasisNotes?: string | null | undefined;
+  optOutStatus: ConferenceOptOutStatus;
+  seniorityScore: number;
+  companyFitScore: number;
+  signalScore: number;
+  conferenceSignalScore: number;
+  warmIntroScore: number;
+  timingScore: number;
+  totalScore: number;
+  priorityBand: ConferencePriorityBand;
+}
+
+export interface ConferenceMeeting extends AuditFields {
+  id: EntityId;
+  conferenceId: EntityId;
+  conferencePersonId: EntityId;
+  reasonToMeet: string;
+  proposedAsk?: string | null | undefined;
+  introPath?: string | null | undefined;
+  status: ConferenceMeetingStatus;
+  notes?: string | null | undefined;
+  nextStep?: string | null | undefined;
+}
+
 export interface EntityRef {
   type: CRMEntityType;
   id: EntityId;
@@ -151,6 +299,7 @@ export interface Note extends AuditFields {
 export type PermissionResource =
   | "account"
   | "contact"
+  | "conference"
   | "lead"
   | "opportunity"
   | "activity"
@@ -225,6 +374,10 @@ export interface AccessPrincipal {
 export type CRMRecord =
   | Account
   | Contact
+  | Conference
+  | ConferenceCompany
+  | ConferencePerson
+  | ConferenceMeeting
   | Lead
   | Opportunity
   | Activity

@@ -283,6 +283,202 @@ async function main() {
     });
   }
 
+  for (const conference of seed.conferences) {
+    await prisma.conference.upsert({
+      where: { id: conference.id },
+      update: {
+        name: conference.name,
+        startDate: new Date(`${conference.startDate}T00:00:00.000Z`),
+        endDate: conference.endDate ? new Date(`${conference.endDate}T00:00:00.000Z`) : null,
+        location: conference.location ?? null,
+        website: conference.website ?? null,
+        audienceType: conference.audienceType ?? null,
+        organizerContact: conference.organizerContact ?? null,
+        sponsorPackageLink: conference.sponsorPackageLink ?? null,
+        appName: conference.appName ?? null,
+        attendeeAccessStatus: conference.attendeeAccessStatus,
+        sourceNotes: conference.sourceNotes ?? null,
+        updatedAt: now,
+        updatedBy: seedUserId,
+        version: conference.version
+      },
+      create: {
+        id: conference.id,
+        tenantId: seedTenantId,
+        name: conference.name,
+        startDate: new Date(`${conference.startDate}T00:00:00.000Z`),
+        endDate: conference.endDate ? new Date(`${conference.endDate}T00:00:00.000Z`) : null,
+        location: conference.location ?? null,
+        website: conference.website ?? null,
+        audienceType: conference.audienceType ?? null,
+        organizerContact: conference.organizerContact ?? null,
+        sponsorPackageLink: conference.sponsorPackageLink ?? null,
+        appName: conference.appName ?? null,
+        attendeeAccessStatus: conference.attendeeAccessStatus,
+        sourceNotes: conference.sourceNotes ?? null,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: seedUserId,
+        updatedBy: seedUserId,
+        version: conference.version
+      }
+    });
+  }
+
+  for (const company of seed.conferenceCompanies) {
+    await prisma.conferenceCompany.upsert({
+      where: { id: company.id },
+      update: {
+        conferenceId: company.conferenceId,
+        accountId: company.accountId ?? null,
+        company: company.company,
+        website: company.website ?? null,
+        conferenceRole: company.conferenceRole,
+        sector: company.sector ?? null,
+        rwaRelevance: company.rwaRelevance,
+        privateMarketsRelevance: company.privateMarketsRelevance,
+        fundraisingRelevance: company.fundraisingRelevance,
+        marketEntryRelevance: company.marketEntryRelevance,
+        partnershipRelevance: company.partnershipRelevance,
+        companyScore: company.companyScore,
+        sourceUrl: company.sourceUrl ?? null,
+        sourceNotes: company.sourceNotes ?? null,
+        updatedAt: now,
+        updatedBy: seedUserId,
+        version: company.version
+      },
+      create: {
+        id: company.id,
+        tenantId: seedTenantId,
+        conferenceId: company.conferenceId,
+        accountId: company.accountId ?? null,
+        company: company.company,
+        website: company.website ?? null,
+        conferenceRole: company.conferenceRole,
+        sector: company.sector ?? null,
+        rwaRelevance: company.rwaRelevance,
+        privateMarketsRelevance: company.privateMarketsRelevance,
+        fundraisingRelevance: company.fundraisingRelevance,
+        marketEntryRelevance: company.marketEntryRelevance,
+        partnershipRelevance: company.partnershipRelevance,
+        companyScore: company.companyScore,
+        sourceUrl: company.sourceUrl ?? null,
+        sourceNotes: company.sourceNotes ?? null,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: seedUserId,
+        updatedBy: seedUserId,
+        version: company.version
+      }
+    });
+  }
+
+  for (const person of seed.conferencePeople) {
+    await prisma.conferencePerson.upsert({
+      where: { id: person.id },
+      update: {
+        conferenceId: person.conferenceId,
+        conferenceCompanyId: person.conferenceCompanyId ?? null,
+        accountId: person.accountId ?? null,
+        contactId: person.contactId ?? null,
+        name: person.name,
+        title: person.title,
+        linkedIn: person.linkedIn ?? null,
+        email: person.email ?? null,
+        conferenceSignal: person.conferenceSignal ?? null,
+        icpCategory: person.icpCategory,
+        buyingSignal: person.buyingSignal ?? null,
+        relationshipPath: person.relationshipPath ?? null,
+        outreachStatus: person.outreachStatus,
+        sourceType: person.sourceType,
+        source: person.source ?? null,
+        lawfulBasisNotes: person.lawfulBasisNotes ?? null,
+        optOutStatus: person.optOutStatus,
+        seniorityScore: person.seniorityScore,
+        companyFitScore: person.companyFitScore,
+        signalScore: person.signalScore,
+        conferenceSignalScore: person.conferenceSignalScore,
+        warmIntroScore: person.warmIntroScore,
+        timingScore: person.timingScore,
+        totalScore: person.totalScore,
+        priorityBand: person.priorityBand,
+        updatedAt: now,
+        updatedBy: seedUserId,
+        version: person.version
+      },
+      create: {
+        id: person.id,
+        tenantId: seedTenantId,
+        conferenceId: person.conferenceId,
+        conferenceCompanyId: person.conferenceCompanyId ?? null,
+        accountId: person.accountId ?? null,
+        contactId: person.contactId ?? null,
+        name: person.name,
+        title: person.title,
+        linkedIn: person.linkedIn ?? null,
+        email: person.email ?? null,
+        conferenceSignal: person.conferenceSignal ?? null,
+        icpCategory: person.icpCategory,
+        buyingSignal: person.buyingSignal ?? null,
+        relationshipPath: person.relationshipPath ?? null,
+        outreachStatus: person.outreachStatus,
+        sourceType: person.sourceType,
+        source: person.source ?? null,
+        lawfulBasisNotes: person.lawfulBasisNotes ?? null,
+        optOutStatus: person.optOutStatus,
+        seniorityScore: person.seniorityScore,
+        companyFitScore: person.companyFitScore,
+        signalScore: person.signalScore,
+        conferenceSignalScore: person.conferenceSignalScore,
+        warmIntroScore: person.warmIntroScore,
+        timingScore: person.timingScore,
+        totalScore: person.totalScore,
+        priorityBand: person.priorityBand,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: seedUserId,
+        updatedBy: seedUserId,
+        version: person.version
+      }
+    });
+  }
+
+  for (const meeting of seed.conferenceMeetings) {
+    await prisma.conferenceMeeting.upsert({
+      where: { id: meeting.id },
+      update: {
+        conferenceId: meeting.conferenceId,
+        conferencePersonId: meeting.conferencePersonId,
+        reasonToMeet: meeting.reasonToMeet,
+        proposedAsk: meeting.proposedAsk ?? null,
+        introPath: meeting.introPath ?? null,
+        status: meeting.status,
+        notes: meeting.notes ?? null,
+        nextStep: meeting.nextStep ?? null,
+        updatedAt: now,
+        updatedBy: seedUserId,
+        version: meeting.version
+      },
+      create: {
+        id: meeting.id,
+        tenantId: seedTenantId,
+        conferenceId: meeting.conferenceId,
+        conferencePersonId: meeting.conferencePersonId,
+        reasonToMeet: meeting.reasonToMeet,
+        proposedAsk: meeting.proposedAsk ?? null,
+        introPath: meeting.introPath ?? null,
+        status: meeting.status,
+        notes: meeting.notes ?? null,
+        nextStep: meeting.nextStep ?? null,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: seedUserId,
+        updatedBy: seedUserId,
+        version: meeting.version
+      }
+    });
+  }
+
   for (const task of seed.tasks) {
     await prisma.task.upsert({
       where: { id: task.id },

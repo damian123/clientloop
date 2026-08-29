@@ -8,7 +8,14 @@ import type {
   Task
 } from "@clientloop/domain";
 
-export type CreateViewMode = "pipeline" | "leads" | "accounts" | "contacts" | "data";
+export type CreateViewMode =
+  | "pipeline"
+  | "leads"
+  | "network"
+  | "accounts"
+  | "contacts"
+  | "conferences"
+  | "data";
 
 export type PermissionTarget = {
   ownerUserId?: string | null | undefined;
@@ -23,6 +30,7 @@ export type DataPermissions = {
   canImportAccounts: boolean;
   canImportContacts: boolean;
   canImportOpportunities: boolean;
+  canImportConferences: boolean;
 };
 
 export type CreatePermissions = {
@@ -30,6 +38,7 @@ export type CreatePermissions = {
   canCreateContacts: boolean;
   canCreateLeads: boolean;
   canCreateOpportunities: boolean;
+  canCreateConferences: boolean;
 };
 
 export type TimelinePermissions = {
@@ -56,7 +65,8 @@ export function deriveDataPermissions(
     canExportOpportunities: canSessionAccess(session, "opportunity", "export", fallback),
     canImportAccounts: canSessionAccess(session, "account", "create", fallback),
     canImportContacts: canSessionAccess(session, "contact", "create", fallback),
-    canImportOpportunities: canSessionAccess(session, "opportunity", "create", fallback)
+    canImportOpportunities: canSessionAccess(session, "opportunity", "create", fallback),
+    canImportConferences: canSessionAccess(session, "conference", "create", fallback)
   };
 }
 
@@ -68,7 +78,8 @@ export function deriveCreatePermissions(
     canCreateAccounts: canSessionAccess(session, "account", "create", fallback),
     canCreateContacts: canSessionAccess(session, "contact", "create", fallback),
     canCreateLeads: canSessionAccess(session, "lead", "create", fallback),
-    canCreateOpportunities: canSessionAccess(session, "opportunity", "create", fallback)
+    canCreateOpportunities: canSessionAccess(session, "opportunity", "create", fallback),
+    canCreateConferences: canSessionAccess(session, "conference", "create", fallback)
   };
 }
 
@@ -174,10 +185,14 @@ export function canCreateForView(permissions: CreatePermissions, viewMode: Creat
       return permissions.canCreateOpportunities;
     case "leads":
       return permissions.canCreateLeads;
+    case "network":
+      return false;
     case "accounts":
       return permissions.canCreateAccounts;
     case "contacts":
       return permissions.canCreateContacts;
+    case "conferences":
+      return permissions.canCreateConferences;
     case "data":
       return false;
   }

@@ -568,6 +568,10 @@ button:disabled {
   color: var(--text);
 }
 
+.compact-select {
+  max-width: 280px;
+}
+
 .empty-state {
   display: grid;
   place-items: center;
@@ -633,6 +637,12 @@ td {
   color: var(--muted);
 }
 
+.table-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 tr:last-child td {
   border-bottom: 0;
 }
@@ -640,6 +650,48 @@ tr:last-child td {
 .data-workspace {
   display: grid;
   gap: 18px;
+}
+
+.conference-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.network-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.network-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.network-note {
+  display: -webkit-box;
+  max-width: 360px;
+  max-height: 58px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.network-workspace td {
+  vertical-align: top;
+}
+
+.conference-summary {
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: start;
+}
+
+.conference-summary .table-subtext {
+  grid-column: 1 / -1;
 }
 
 .data-section {
@@ -679,6 +731,64 @@ tr:last-child td {
   display: grid;
   grid-template-columns: repeat(4, minmax(130px, 1fr));
   gap: 10px;
+  align-items: end;
+}
+
+.conference-form-grid {
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.score-grid {
+  display: grid;
+  grid-column: span 2;
+  grid-template-columns: repeat(3, minmax(70px, 1fr));
+  gap: 8px;
+}
+
+.conference-filter-panel {
+  gap: 10px;
+}
+
+.conference-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.conference-filter-grid.compact {
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+}
+
+.conference-filter-grid label,
+.bulk-select-field {
+  display: grid;
+  gap: 5px;
+}
+
+.conference-filter-grid label > span,
+.bulk-select-field > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.conference-filter-grid select,
+.bulk-select-field select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--panel-muted);
+  color: var(--text);
+}
+
+.conference-bulk-bar {
+  display: grid;
+  gap: 8px;
+}
+
+.conference-bulk-bar .data-actions {
   align-items: end;
 }
 
@@ -859,6 +969,53 @@ tr:last-child td {
   padding-left: 18px;
   color: var(--red);
   font-size: 13px;
+}
+
+.query-list {
+  display: grid;
+  gap: 8px;
+}
+
+.query-list code {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--panel-muted);
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.template-box {
+  width: 100%;
+  min-height: 300px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-muted);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.template-grid label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.template-grid label > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .data-message {
@@ -1306,6 +1463,13 @@ tr:last-child td {
   .record-create-form,
   .definition-row,
   .activity-payload-grid,
+  .conference-form-grid,
+  .conference-filter-grid,
+  .conference-filter-grid.compact,
+  .conference-summary,
+  .network-summary,
+  .score-grid,
+  .template-grid,
   .task-queue-filters {
     grid-template-columns: 1fr;
   }

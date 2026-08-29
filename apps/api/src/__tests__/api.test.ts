@@ -147,6 +147,123 @@ describe("CRM API", () => {
     await app.close();
   });
 
+  it("creates, scores, and plans conference prospects with compliance guardrails", async () => {
+    const app = await buildServer({ repository: new InMemoryCRMRepository() });
+
+    const conferenceResponse = await app.inject({
+      method: "POST",
+      url: "/v1/conferences",
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        name: "RWA Capital Forum",
+        startDate: "2026-07-10",
+        location: "London",
+        website: "https://example.com/rwa-capital-forum",
+        audienceType: "Asset owners and private markets",
+        attendeeAccessStatus: "unknown"
+      }
+    });
+
+    expect(conferenceResponse.statusCode).toBe(201);
+
+    const companyResponse = await app.inject({
+      method: "POST",
+      url: `/v1/conferences/${conferenceResponse.json().id}/companies`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        company: "Stonebridge Assets",
+        conferenceRole: "speaker",
+        sector: "Real assets",
+        rwaRelevance: true,
+        privateMarketsRelevance: true,
+        fundraisingRelevance: false,
+        marketEntryRelevance: true,
+        partnershipRelevance: true,
+        companyScore: 18,
+        sourceUrl: "https://example.com/rwa-capital-forum/speakers"
+      }
+    });
+
+    expect(companyResponse.statusCode).toBe(201);
+
+    const personResponse = await app.inject({
+      method: "POST",
+      url: `/v1/conferences/${conferenceResponse.json().id}/people`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        conferenceCompanyId: companyResponse.json().id,
+        name: "Morgan Vale",
+        title: "Managing Partner",
+        icpCategory: "asset_owner",
+        conferenceSignal: "Speaking on real assets",
+        buyingSignal: "Announced tokenization strategy",
+        relationshipPath: "Warm intro",
+        sourceType: "speaker_agenda",
+        source: "Agenda page",
+        lawfulBasisNotes: "No email stored; use event app or warm intro.",
+        optOutStatus: "not_opted_out",
+        seniorityScore: 4,
+        companyFitScore: 4,
+        signalScore: 5,
+        conferenceSignalScore: 3,
+        warmIntroScore: 2,
+        timingScore: 2
+      }
+    });
+
+    expect(personResponse.statusCode).toBe(201);
+    expect(personResponse.json().totalScore).toBe(20);
+    expect(personResponse.json().priorityBand).toBe("request_meeting");
+
+    const meetingResponse = await app.inject({
+      method: "POST",
+      url: `/v1/conferences/${conferenceResponse.json().id}/meetings`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        conferencePersonId: personResponse.json().id,
+        reasonToMeet: "Discuss real asset tokenization launch readiness",
+        proposedAsk: "15-minute meeting",
+        status: "requested"
+      }
+    });
+
+    expect(meetingResponse.statusCode).toBe(201);
+    expect(meetingResponse.json().status).toBe("requested");
+
+    const blockedPersonResponse = await app.inject({
+      method: "POST",
+      url: `/v1/conferences/${conferenceResponse.json().id}/people`,
+      headers: {
+        "x-user-id": seedManagerId
+      },
+      payload: {
+        name: "Opted Out",
+        title: "CIO",
+        icpCategory: "investor_allocator",
+        outreachStatus: "meeting_requested",
+        sourceType: "manual_research",
+        optOutStatus: "opted_out",
+        seniorityScore: 4,
+        companyFitScore: 4,
+        signalScore: 4,
+        conferenceSignalScore: 2,
+        warmIntroScore: 0,
+        timingScore: 1
+      }
+    });
+
+    expect(blockedPersonResponse.statusCode).toBe(409);
+    await app.close();
+  });
+
   it("rejects contextual create endpoints without create permissions", async () => {
     const seed = createSeedData();
     seed.roles = seed.roles.map((role) =>

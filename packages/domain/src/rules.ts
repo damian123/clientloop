@@ -1,5 +1,8 @@
 import type {
   AuditFields,
+  ConferenceOptOutStatus,
+  ConferenceOutreachStatus,
+  ConferencePriorityBand,
   EntityId,
   ISODate,
   Lead,
@@ -138,4 +141,94 @@ export function convertLead(input: {
     updatedBy: input.actorUserId,
     version: input.lead.version + 1
   };
+}
+
+export interface ConferenceScoreInput {
+  seniorityScore: number;
+  companyFitScore: number;
+  signalScore: number;
+  conferenceSignalScore: number;
+  warmIntroScore: number;
+  timingScore: number;
+}
+
+export interface ConferenceScoreResult extends ConferenceScoreInput {
+  totalScore: number;
+  priorityBand: ConferencePriorityBand;
+}
+
+const conferenceScoreRanges: Record<keyof ConferenceScoreInput, { min: number; max: number }> = {
+  seniorityScore: { min: 0, max: 4 },
+  companyFitScore: { min: 0, max: 4 },
+  signalScore: { min: 0, max: 5 },
+  conferenceSignalScore: { min: 0, max: 3 },
+  warmIntroScore: { min: 0, max: 2 },
+  timingScore: { min: 0, max: 2 }
+};
+
+export function scoreConferenceProspect(input: ConferenceScoreInput): ConferenceScoreResult {
+  for (const [field, range] of Object.entries(conferenceScoreRanges)) {
+    const value = input[field as keyof ConferenceScoreInput];
+    if (!Number.isInteger(value) || value < range.min || value > range.max) {
+      throw new DomainRuleError(`${field} must be an integer from ${range.min} to ${range.max}`);
+    }
+  }
+
+  const totalScore =
+    input.seniorityScore +
+    input.companyFitScore +
+    input.signalScore +
+    input.conferenceSignalScore +
+    input.warmIntroScore +
+    input.timingScore;
+
+  return {
+    ...input,
+    totalScore,
+    priorityBand: priorityBandForConferenceScore(totalScore)
+  };
+}
+
+export function priorityBandForConferenceScore(totalScore: number): ConferencePriorityBand {
+  if (!Number.isInteger(totalScore) || totalScore < 0 || totalScore > 20) {
+    throw new DomainRuleError("totalScore must be an integer from 0 to 20");
+  }
+
+  if (totalScore >= 16) {
+    return "request_meeting";
+  }
+
+  if (totalScore >= 12) {
+    return "personalized_outreach";
+  }
+
+  if (totalScore >= 8) {
+    return "nurture";
+  }
+
+  return "do_not_prioritize";
+}
+
+export function assertConferenceEmailLawfulBasis(input: {
+  email?: string | null | undefined;
+  lawfulBasisNotes?: string | null | undefined;
+}): void {
+  if (input.email && !input.lawfulBasisNotes?.trim()) {
+    throw new DomainRuleError("Lawful basis notes are required before storing an outreach email");
+  }
+}
+
+export function assertConferenceOutreachAllowed(input: {
+  optOutStatus: ConferenceOptOutStatus;
+  outreachStatus?: ConferenceOutreachStatus | undefined;
+}): void {
+  if (
+    input.optOutStatus === "opted_out" &&
+    (input.outreachStatus === "queued" ||
+      input.outreachStatus === "contacted" ||
+      input.outreachStatus === "meeting_requested" ||
+      input.outreachStatus === "meeting_booked")
+  ) {
+    throw new DomainRuleError("Opted-out conference prospects cannot be added to outreach actions");
+  }
 }

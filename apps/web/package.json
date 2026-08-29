@@ -14,7 +14,7 @@
     "@clientloop/domain": "0.1.0",
     "@clientloop/ui-sdk": "0.1.0",
     "lucide-react": "^0.511.0",
-    "next": "^15.3.2",
+    "next": "^16.3.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

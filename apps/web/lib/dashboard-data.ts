@@ -27,6 +27,10 @@ function seedDashboard(): DashboardResponse {
   return {
     accounts: seed.accounts,
     contacts: seed.contacts,
+    conferences: seed.conferences,
+    conferenceCompanies: seed.conferenceCompanies,
+    conferencePeople: seed.conferencePeople,
+    conferenceMeetings: seed.conferenceMeetings,
     leads: seed.leads,
     opportunities: seed.opportunities,
     tasks: seed.tasks,

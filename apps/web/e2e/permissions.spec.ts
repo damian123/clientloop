@@ -3,7 +3,7 @@ import { seedManagerId, seedTenantId, seedUserId } from "@clientloop/domain";
 
 const ownedAccountPath =
   "/?view=accounts&record=account%3A00000000-0000-4000-8000-000000001001";
-const apiBaseUrl = "http://127.0.0.1:4100";
+const apiBaseUrl = `http://127.0.0.1:${process.env.CLIENTLOOP_E2E_API_PORT ?? 4100}`;
 
 const noCreateSession = {
   authenticated: true,
