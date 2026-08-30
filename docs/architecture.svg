@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640">
+  <defs>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .title { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 32px; font-weight: 700; fill: #18202a; }
+      .subtitle { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 16px; fill: #657180; }
+      .label { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 18px; font-weight: 700; fill: #18202a; }
+      .small { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 14px; fill: #657180; }
+      .box { fill: #ffffff; stroke: #d9dee4; stroke-width: 1.5; rx: 16; }
+      .accent { fill: #dcefe9; stroke: #146c5f; stroke-width: 1.5; rx: 16; }
+      .arrow { stroke: #146c5f; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#146c5f"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="640" fill="#f6f7f9"/>
+  <text x="48" y="56" class="title">ClientLoop architecture</text>
+  <text x="48" y="86" class="subtitle">Modular monolith · Fastify · Next.js · Prisma · PostgreSQL</text>
+
+  <g filter="url(#shadow)">
+    <rect x="48" y="140" width="210" height="110" class="box"/>
+    <text x="153" y="188" text-anchor="middle" class="label">Next.js UI</text>
+    <text x="153" y="214" text-anchor="middle" class="small">workspace + session</text>
+
+    <rect x="330" y="140" width="210" height="110" class="accent"/>
+    <text x="435" y="188" text-anchor="middle" class="label">Fastify API</text>
+    <text x="435" y="214" text-anchor="middle" class="small">auth, permissions, CSRF</text>
+
+    <rect x="612" y="140" width="210" height="110" class="box"/>
+    <text x="717" y="188" text-anchor="middle" class="label">Domain</text>
+    <text x="717" y="214" text-anchor="middle" class="small">rules + contracts</text>
+
+    <rect x="894" y="140" width="258" height="110" class="accent"/>
+    <text x="1023" y="188" text-anchor="middle" class="label">PostgreSQL</text>
+    <text x="1023" y="214" text-anchor="middle" class="small">Prisma schema + audit</text>
+
+    <rect x="48" y="360" width="258" height="110" class="box"/>
+    <text x="177" y="408" text-anchor="middle" class="label">CSV workflows</text>
+    <text x="177" y="434" text-anchor="middle" class="small">preview then commit</text>
+
+    <rect x="360" y="360" width="258" height="110" class="box"/>
+    <text x="489" y="408" text-anchor="middle" class="label">Outbox worker</text>
+    <text x="489" y="434" text-anchor="middle" class="small">signed webhook delivery</text>
+
+    <rect x="672" y="360" width="258" height="110" class="box"/>
+    <text x="801" y="408" text-anchor="middle" class="label">Playwright</text>
+    <text x="801" y="434" text-anchor="middle" class="small">permissions and journeys</text>
+  </g>
+
+  <path class="arrow" d="M258 195 H330"/>
+  <path class="arrow" d="M540 195 H612"/>
+  <path class="arrow" d="M822 195 H894"/>
+  <path class="arrow" d="M435 250 V360"/>
+  <path class="arrow" d="M177 360 V250"/>
+  <path class="arrow" d="M489 360 V250"/>
+</svg>

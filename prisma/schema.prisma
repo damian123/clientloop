@@ -94,13 +94,13 @@ enum ConferenceSourceType {
 }
 
 enum ConferenceIcpCategory {
-  founder_operator
-  asset_owner
-  private_markets
-  fintech_digital_assets
-  investor_allocator
-  strategic_partner
-  lower_priority
+  executive
+  economic_buyer
+  operator
+  technical_evaluator
+  champion
+  partner
+  other
   unknown
 }
 
@@ -388,9 +388,9 @@ model ConferenceCompany {
   website                 String?
   conferenceRole          ConferenceRole @default(other) @map("conference_role")
   sector                  String?
-  rwaRelevance            Boolean        @default(false) @map("rwa_relevance")
-  privateMarketsRelevance Boolean        @default(false) @map("private_markets_relevance")
-  fundraisingRelevance    Boolean        @default(false) @map("fundraising_relevance")
+  productFit              Boolean        @default(false) @map("product_fit")
+  expansionFit            Boolean        @default(false) @map("expansion_fit")
+  budgetFit               Boolean        @default(false) @map("budget_fit")
   marketEntryRelevance    Boolean        @default(false) @map("market_entry_relevance")
   partnershipRelevance    Boolean        @default(false) @map("partnership_relevance")
   companyScore            Int            @default(0) @map("company_score")

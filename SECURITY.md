@@ -1,6 +1,6 @@
 # Security
 
-ClientLoop is a synthetic portfolio scaffold. It is not a hosted product and is not intended for production use with real customer, prospect, or payment data.
+Portfolio project using fictional data. It is not connected to an employer, client, or production system.
 
 ## Reporting a vulnerability
 

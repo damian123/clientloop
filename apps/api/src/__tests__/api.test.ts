@@ -157,11 +157,11 @@ describe("CRM API", () => {
         "x-user-id": seedManagerId
       },
       payload: {
-        name: "RWA Capital Forum",
+        name: "Northwind Product Summit",
         startDate: "2026-07-10",
         location: "London",
-        website: "https://example.com/rwa-capital-forum",
-        audienceType: "Asset owners and private markets",
+        website: "https://example.com/northwind-product-summit",
+        audienceType: "B2B software operators and partners",
         attendeeAccessStatus: "unknown"
       }
     });
@@ -175,16 +175,16 @@ describe("CRM API", () => {
         "x-user-id": seedManagerId
       },
       payload: {
-        company: "Stonebridge Assets",
+        company: "Stonebridge Analytics",
         conferenceRole: "speaker",
-        sector: "Real assets",
-        rwaRelevance: true,
-        privateMarketsRelevance: true,
-        fundraisingRelevance: false,
+        sector: "Enterprise software",
+        productFit: true,
+        expansionFit: true,
+        budgetFit: false,
         marketEntryRelevance: true,
         partnershipRelevance: true,
         companyScore: 18,
-        sourceUrl: "https://example.com/rwa-capital-forum/speakers"
+        sourceUrl: "https://example.com/northwind-product-summit/speakers"
       }
     });
 
@@ -200,9 +200,9 @@ describe("CRM API", () => {
         conferenceCompanyId: companyResponse.json().id,
         name: "Morgan Vale",
         title: "Managing Partner",
-        icpCategory: "asset_owner",
-        conferenceSignal: "Speaking on real assets",
-        buyingSignal: "Announced tokenization strategy",
+        icpCategory: "economic_buyer",
+        conferenceSignal: "Speaking on platform operations",
+        buyingSignal: "Announced a platform expansion",
         relationshipPath: "Warm intro",
         sourceType: "speaker_agenda",
         source: "Agenda page",
@@ -229,7 +229,7 @@ describe("CRM API", () => {
       },
       payload: {
         conferencePersonId: personResponse.json().id,
-        reasonToMeet: "Discuss real asset tokenization launch readiness",
+        reasonToMeet: "Discuss a possible product partnership",
         proposedAsk: "15-minute meeting",
         status: "requested"
       }
@@ -247,7 +247,7 @@ describe("CRM API", () => {
       payload: {
         name: "Opted Out",
         title: "CIO",
-        icpCategory: "investor_allocator",
+        icpCategory: "champion",
         outreachStatus: "meeting_requested",
         sourceType: "manual_research",
         optOutStatus: "opted_out",
