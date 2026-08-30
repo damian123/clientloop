@@ -155,13 +155,13 @@ export type ConferenceSourceType =
   | "manual_research";
 
 export type ConferenceIcpCategory =
-  | "founder_operator"
-  | "asset_owner"
-  | "private_markets"
-  | "fintech_digital_assets"
-  | "investor_allocator"
-  | "strategic_partner"
-  | "lower_priority"
+  | "executive"
+  | "economic_buyer"
+  | "operator"
+  | "technical_evaluator"
+  | "champion"
+  | "partner"
+  | "other"
   | "unknown";
 
 export type ConferenceOutreachStatus =
@@ -213,9 +213,9 @@ export interface ConferenceCompany extends AuditFields {
   website?: string | null | undefined;
   conferenceRole: ConferenceRole;
   sector?: string | null | undefined;
-  rwaRelevance: boolean;
-  privateMarketsRelevance: boolean;
-  fundraisingRelevance: boolean;
+  productFit: boolean;
+  expansionFit: boolean;
+  budgetFit: boolean;
   marketEntryRelevance: boolean;
   partnershipRelevance: boolean;
   companyScore: number;

@@ -5,8 +5,8 @@ const apiBaseUrl = `http://127.0.0.1:${process.env.CLIENTLOOP_E2E_API_PORT ?? 41
 
 test("manager can run account-first conference prospecting workflow", async ({ page }) => {
   const suffix = Date.now();
-  const conferenceName = `RWA Capital Forum ${suffix}`;
-  const companyName = `Harbor Tokenization ${suffix}`;
+  const conferenceName = `Northwind Product Summit ${suffix}`;
+  const companyName = `Harbor Analytics ${suffix}`;
   const personName = `Avery Prospect ${suffix}`;
 
   await page.route(`${apiBaseUrl}/v1/session/dev-login`, async (route) => {
@@ -30,7 +30,7 @@ test("manager can run account-first conference prospecting workflow", async ({ p
   await createConference.getByLabel("Start").fill("2026-09-14");
   await createConference.getByLabel("End").fill("2026-09-15");
   await createConference.getByLabel("Location").fill("New York, NY");
-  await createConference.getByLabel("Audience").fill("Private markets and real world assets");
+  await createConference.getByLabel("Audience").fill("Enterprise software and partnerships");
   await createConference.getByRole("button", { name: "Create conference" }).click();
 
   await expect(page.getByText(`Created ${conferenceName}`)).toBeVisible();
@@ -41,8 +41,8 @@ test("manager can run account-first conference prospecting workflow", async ({ p
     .getByRole("textbox", { name: "Conference company CSV" })
     .fill(
       [
-        "Company,Website,Conference role,Sector,RWA relevance,Private markets relevance,Fundraising relevance,Market entry relevance,Partnership relevance,Company score,Source URL",
-        `${companyName},https://harbor-tokenization.example,sponsor,Private markets infrastructure,true,true,false,true,true,18,https://example.com/sponsors`
+        "Company,Website,Conference role,Sector,Product fit,Expansion fit,Budget fit,Market entry relevance,Partnership relevance,Company score,Source URL",
+        `${companyName},https://harbor-analytics.example,sponsor,Enterprise data infrastructure,true,true,false,true,true,18,https://example.com/sponsors`
       ].join("\n")
     );
   await companyImport.getByRole("button", { name: "Preview" }).click();
@@ -60,7 +60,7 @@ test("manager can run account-first conference prospecting workflow", async ({ p
     .fill(
       [
         "Name,Title,Company,LinkedIn,Conference signal,ICP category,Buying signal,Relationship path,Outreach status,Source type,Source,Lawful basis notes,Opt out status,Seniority score,Company fit score,Signal score,Conference signal score,Warm intro score,Timing score",
-        `${personName},Head of Partnerships,${companyName},https://linkedin.com/in/avery-prospect,Speaker on tokenization panel,strategic_partner,Partnership expansion,Ask Morgan,not_started,speaker_agenda,Agenda page,No email stored,not_opted_out,4,4,5,3,1,2`
+        `${personName},Head of Partnerships,${companyName},https://linkedin.com/in/avery-prospect,Speaker on platform integrations panel,partner,Partnership expansion,Ask Morgan,not_started,speaker_agenda,Agenda page,No email stored,not_opted_out,4,4,5,3,1,2`
       ].join("\n")
     );
   await personImport.getByRole("button", { name: "Preview" }).click();
@@ -92,14 +92,14 @@ test("manager can run account-first conference prospecting workflow", async ({ p
     .fill(
       [
         "Name,Company,Reason to meet,Proposed ask,Intro path,Meeting requested,Meeting booked,Notes,Next step",
-        `${personName},${companyName},Compare notes on tokenization,15-minute meeting,Warm intro,yes,false,Prioritize before event,Request intro`
+        `${personName},${companyName},Compare notes on a product partnership,15-minute meeting,Warm intro,yes,false,Prioritize before event,Request intro`
       ].join("\n")
     );
   await meetingImport.getByRole("button", { name: "Preview" }).click();
   await expect(page.getByText("1 valid meeting rows from 1")).toBeVisible();
   await meetingImport.getByRole("button", { name: "Import" }).click();
   await expect(page.getByText("Imported 1 meetings")).toBeVisible();
-  await expect(page.getByRole("table").getByText("Compare notes on tokenization")).toBeVisible();
+  await expect(page.getByRole("table").getByText("Compare notes on a product partnership")).toBeVisible();
 
   await page.getByRole("button", { name: "Templates" }).click();
   await expect(page.getByRole("region", { name: "Conference CSV templates" })).toContainText("Conference name");

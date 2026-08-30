@@ -61,4 +61,3 @@ This folder tracks implementation work in Markdown so progress survives across s
 - [0057-global-search-ui.md](./0057-global-search-ui.md)
 - [0058-search-keyboard-navigation.md](./0058-search-keyboard-navigation.md)
 - [0059-account-first-conference-prospecting.md](./0059-account-first-conference-prospecting.md)
-- [0060-linkedin-prospect-queue-crm.md](./0060-linkedin-prospect-queue-crm.md)

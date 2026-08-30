@@ -232,13 +232,13 @@ export const conferenceSourceTypeSchema = z.enum([
 ]);
 
 export const conferenceIcpCategorySchema = z.enum([
-  "founder_operator",
-  "asset_owner",
-  "private_markets",
-  "fintech_digital_assets",
-  "investor_allocator",
-  "strategic_partner",
-  "lower_priority",
+  "executive",
+  "economic_buyer",
+  "operator",
+  "technical_evaluator",
+  "champion",
+  "partner",
+  "other",
   "unknown"
 ]);
 
@@ -295,9 +295,9 @@ export const conferenceCompanySchema = z.object({
   website: z.string().url().nullish(),
   conferenceRole: conferenceRoleSchema,
   sector: z.string().nullish(),
-  rwaRelevance: z.boolean(),
-  privateMarketsRelevance: z.boolean(),
-  fundraisingRelevance: z.boolean(),
+  productFit: z.boolean(),
+  expansionFit: z.boolean(),
+  budgetFit: z.boolean(),
   marketEntryRelevance: z.boolean(),
   partnershipRelevance: z.boolean(),
   companyScore: z.number().int().min(0).max(20),

@@ -53,13 +53,13 @@ const conferenceRoleSchema = z.enum([
   "other"
 ]);
 const conferenceIcpCategorySchema = z.enum([
-  "founder_operator",
-  "asset_owner",
-  "private_markets",
-  "fintech_digital_assets",
-  "investor_allocator",
-  "strategic_partner",
-  "lower_priority",
+  "executive",
+  "economic_buyer",
+  "operator",
+  "technical_evaluator",
+  "champion",
+  "partner",
+  "other",
   "unknown"
 ]);
 const conferenceOutreachStatusSchema = z.enum([
@@ -108,9 +108,9 @@ type ConferenceCompanyImportField =
   | "website"
   | "conferenceRole"
   | "sector"
-  | "rwaRelevance"
-  | "privateMarketsRelevance"
-  | "fundraisingRelevance"
+  | "productFit"
+  | "expansionFit"
+  | "budgetFit"
   | "marketEntryRelevance"
   | "partnershipRelevance"
   | "companyScore"
@@ -185,13 +185,13 @@ const conferenceCompanyAliases: Record<ConferenceCompanyImportField, string[]> =
   website: ["Website", "website", "Company website", "companyWebsite"],
   conferenceRole: ["Conference role", "conferenceRole", "conference_role", "Role"],
   sector: ["Sector", "sector"],
-  rwaRelevance: ["RWA relevance", "rwaRelevance", "rwa_relevance"],
-  privateMarketsRelevance: [
-    "Private markets relevance",
-    "privateMarketsRelevance",
-    "private_markets_relevance"
+  productFit: ["Product fit", "productFit", "product_fit"],
+  expansionFit: [
+    "Expansion fit",
+    "expansionFit",
+    "expansion_fit"
   ],
-  fundraisingRelevance: ["Fundraising relevance", "fundraisingRelevance", "fundraising_relevance"],
+  budgetFit: ["Budget fit", "budgetFit", "budget_fit"],
   marketEntryRelevance: ["Market entry relevance", "marketEntryRelevance", "market_entry_relevance"],
   partnershipRelevance: ["Partnership relevance", "partnershipRelevance", "partnership_relevance"],
   companyScore: ["Company score", "companyScore", "company_score"],
@@ -577,14 +577,14 @@ function toConferenceCompanyImportRow(
       ? conferenceRoleSchema.parse(conferenceRole)
       : conferenceRole,
     sector: readMappedValue(rawRow, "sector", mapping, conferenceCompanyAliases) || undefined,
-    rwaRelevance: readBoolean(rawRow, "rwaRelevance", mapping, conferenceCompanyAliases),
-    privateMarketsRelevance: readBoolean(
+    productFit: readBoolean(rawRow, "productFit", mapping, conferenceCompanyAliases),
+    expansionFit: readBoolean(
       rawRow,
-      "privateMarketsRelevance",
+      "expansionFit",
       mapping,
       conferenceCompanyAliases
     ),
-    fundraisingRelevance: readBoolean(rawRow, "fundraisingRelevance", mapping, conferenceCompanyAliases),
+    budgetFit: readBoolean(rawRow, "budgetFit", mapping, conferenceCompanyAliases),
     marketEntryRelevance: readBoolean(rawRow, "marketEntryRelevance", mapping, conferenceCompanyAliases),
     partnershipRelevance: readBoolean(rawRow, "partnershipRelevance", mapping, conferenceCompanyAliases),
     companyScore: readOptionalNumber(rawRow, "companyScore", mapping, conferenceCompanyAliases) ?? 0,

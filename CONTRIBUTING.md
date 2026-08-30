@@ -26,4 +26,4 @@ PostgreSQL is optional for the unit/API suite (`CRM_REPOSITORY=memory`). For Pri
 - [ ] Typecheck and unit/API tests pass
 - [ ] Playwright coverage updated when UI or permission behavior changes
 - [ ] README or task notes updated when a workflow is added or removed
-- [ ] No secrets, live LinkedIn exports, or personal data
+- [ ] No secrets, real prospect data, or personal data
