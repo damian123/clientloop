@@ -67,16 +67,30 @@ The response sets an HttpOnly `clientloop_session` cookie plus a readable CSRF c
 
 ## Database
 
-Start local PostgreSQL on this Mac and apply Prisma migrations:
+Copy the example env file, start PostgreSQL, then apply Prisma migrations:
 
 ```bash
 cp .env.example .env
+```
+
+Start PostgreSQL with Docker (any OS):
+
+```bash
+docker compose up -d
+```
+
+Or on macOS with Homebrew:
+
+```bash
 npm run db:setup
+```
+
+The Homebrew helper installs and starts PostgreSQL, creates the `clientloop` role and database, and matches `DATABASE_URL` in `.env.example`. Then:
+
+```bash
 npm run prisma:migrate
 npm run prisma:seed
 ```
-
-The local database helper uses Homebrew PostgreSQL, creates the `clientloop` role and database, and reuses the same `DATABASE_URL` from `.env.example`.
 
 The seed script loads the same canonical demo data used by the in-memory repository. The API uses Prisma when `DATABASE_URL` is set, and can be forced back to memory with `CRM_REPOSITORY=memory`.
 
@@ -161,6 +175,10 @@ npm run build
 ## CI
 
 `.github/workflows/ci.yml` audits production dependencies, then runs type checks, unit/API tests, Playwright end-to-end tests, and the production build on pull requests and pushes to `main`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
 
 ## License
 
