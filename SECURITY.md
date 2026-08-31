@@ -16,4 +16,4 @@ There is no bug bounty.
 
 ## Non-goals
 
-Development authentication (`ALLOW_DEV_LOGIN`, `ALLOW_HEADER_AUTH`, and example secrets in `.env.example`) is for local demonstration only. Treat those values as public. Do not point this codebase at live inboxes, CRMs, or identity providers without replacing auth, secrets, and infrastructure.
+Development authentication (`ALLOW_DEV_LOGIN`, `ALLOW_HEADER_AUTH`, and example secrets in `.env.example`) is for local demonstration only. Treat those values as public. For a real deployment, disable both development paths, configure the OIDC authorization-code flow with a confidential client and HTTPS callback, rotate every example secret, and perform a provider-specific threat review. Do not point this codebase at live inboxes, CRMs, or identity providers without replacing secrets and infrastructure.

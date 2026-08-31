@@ -107,6 +107,26 @@ export class InMemoryCRMRepository implements CRMRepository {
       (candidate) => candidate.tenantId === tenantId && candidate.id === userId
     );
 
+    if (!user || user.status !== "active") {
+      throw new Error("Authenticated user was not found");
+    }
+
+    return {
+      tenantId,
+      user,
+      roles: this.store.roles.filter((role) => user.roleIds.includes(role.id))
+    };
+  }
+
+  async getPrincipalByEmail(tenantId: TenantId, email: string): Promise<AccessPrincipal> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = this.store.users.find(
+      (candidate) =>
+        candidate.tenantId === tenantId &&
+        candidate.status === "active" &&
+        candidate.email.toLowerCase() === normalizedEmail
+    );
+
     if (!user) {
       throw new Error("Authenticated user was not found");
     }
