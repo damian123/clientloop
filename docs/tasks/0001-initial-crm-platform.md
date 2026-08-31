@@ -25,7 +25,7 @@ Completed for initial scaffold.
 - The implementation keeps the in-memory repository available for tests and fallback.
 - PostgreSQL durability is now wired through the Prisma repository when `DATABASE_URL` is set.
 - OAuth/OIDC BFF login, the bounded GraphQL detail read layer, and import/export jobs are implemented in focused follow-up work.
-- The CI workflow is stored as `docs/ci/github-actions-ci.yml` until GitHub push credentials include the `workflow` scope.
+- The active CI workflow is stored at `.github/workflows/ci.yml`.
 
 ## Verification
 
