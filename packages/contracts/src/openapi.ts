@@ -32,6 +32,32 @@ export const openApiDocument = {
         }
       }
     },
+    "/v1/session/oidc/login": {
+      get: {
+        summary: "Start the configured OIDC authorization-code flow",
+        parameters: [
+          {
+            name: "returnTo",
+            in: "query",
+            schema: { type: "string", pattern: "^/(?!/)" }
+          }
+        ],
+        responses: {
+          "302": { description: "Redirect to the identity provider" },
+          "404": { description: "OIDC is not configured" }
+        }
+      }
+    },
+    "/v1/session/oidc/callback": {
+      get: {
+        summary: "Validate the OIDC callback and create a CRM session",
+        responses: {
+          "302": { description: "Session created; redirect to the allowlisted local path" },
+          "400": { description: "OIDC transaction is missing, invalid, or expired" },
+          "401": { description: "OIDC authentication failed" }
+        }
+      }
+    },
     "/v1/session/logout": {
       post: {
         summary: "Clear the current session cookie",

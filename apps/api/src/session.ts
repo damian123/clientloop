@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { resolveSigningSecret } from "./signing-secret";
 
 const DEFAULT_SESSION_TTL_SECONDS = 60 * 60 * 8;
 
@@ -154,16 +155,11 @@ function useSecureCookies(): boolean {
 }
 
 function sessionSecret(): string {
-  const configured = process.env.SESSION_SIGNING_SECRET ?? process.env.WEBHOOK_SIGNING_SECRET;
-  if (configured && configured !== "replace-me") {
-    return configured;
-  }
-
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("SESSION_SIGNING_SECRET must be configured in production");
-  }
-
-  return "clientloop-local-session-secret";
+  return resolveSigningSecret({
+    environmentVariable: "SESSION_SIGNING_SECRET",
+    configured: process.env.SESSION_SIGNING_SECRET,
+    localFallback: "clientloop-local-session-secret"
+  });
 }
 
 function sign(value: string): string {
@@ -194,7 +190,11 @@ function parseCookies(header: string | undefined): Record<string, string> {
       return cookies;
     }
 
-    cookies[rawName] = decodeURIComponent(rawValue.join("="));
+    try {
+      cookies[rawName] = decodeURIComponent(rawValue.join("="));
+    } catch {
+      // Ignore malformed client input so authentication fails closed.
+    }
     return cookies;
   }, {});
 }

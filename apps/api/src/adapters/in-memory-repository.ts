@@ -69,7 +69,11 @@ import type {
   UpdateOpportunityInput,
   UpdateTaskInput
 } from "@clientloop/contracts";
-import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
+import type {
+  CRMRepository,
+  OidcPrincipalIdentity,
+  WebhookDeliveryTarget
+} from "../repository";
 
 interface Store {
   users: User[];
@@ -90,6 +94,13 @@ interface Store {
 
 type CustomFieldRecord = Account | Contact | Lead | Opportunity;
 
+interface OidcBinding {
+  tenantId: TenantId;
+  userId: string;
+  issuer: string;
+  subject: string;
+}
+
 export class InMemoryCRMRepository implements CRMRepository {
   private readonly store: Store;
   private readonly outbox: OutboxEvent[] = [];
@@ -97,6 +108,7 @@ export class InMemoryCRMRepository implements CRMRepository {
   private readonly idempotencyResults = new Map<string, Opportunity>();
   private readonly leadConversionResults = new Map<string, LeadConversionResult>();
   private readonly customFieldValueResults = new Map<string, CustomFieldValueUpdateResult>();
+  private readonly oidcBindings: OidcBinding[] = [];
 
   constructor(seed: Store = createSeedData()) {
     this.store = seed;
@@ -107,7 +119,7 @@ export class InMemoryCRMRepository implements CRMRepository {
       (candidate) => candidate.tenantId === tenantId && candidate.id === userId
     );
 
-    if (!user) {
+    if (!user || user.status !== "active" || user.archivedAt) {
       throw new Error("Authenticated user was not found");
     }
 
@@ -116,6 +128,55 @@ export class InMemoryCRMRepository implements CRMRepository {
       user,
       roles: this.store.roles.filter((role) => user.roleIds.includes(role.id))
     };
+  }
+
+  async getPrincipalByOidcIdentity(
+    identity: OidcPrincipalIdentity
+  ): Promise<AccessPrincipal> {
+    const binding = this.oidcBindings.find(
+      (candidate) =>
+        candidate.tenantId === identity.tenantId &&
+        candidate.issuer === identity.issuer &&
+        candidate.subject === identity.subject
+    );
+    if (binding) {
+      return this.getPrincipal(identity.tenantId, binding.userId);
+    }
+
+    if (!identity.allowEmailLinking) {
+      throw new Error("OIDC identity is not linked to a user");
+    }
+
+    const normalizedEmail = identity.email.trim().toLowerCase();
+    const candidates = this.store.users.filter(
+      (candidate) =>
+        candidate.tenantId === identity.tenantId &&
+        candidate.status === "active" &&
+        !candidate.archivedAt &&
+        candidate.email.toLowerCase() === normalizedEmail
+    );
+    if (candidates.length !== 1) {
+      throw new Error("Authenticated user was not found");
+    }
+    const user = candidates[0]!;
+    if (
+      this.oidcBindings.some(
+        (candidate) =>
+          candidate.tenantId === identity.tenantId &&
+          candidate.userId === user.id &&
+          candidate.issuer === identity.issuer
+      )
+    ) {
+      throw new Error("OIDC identity is not linked to a user");
+    }
+
+    this.oidcBindings.push({
+      tenantId: identity.tenantId,
+      userId: user.id,
+      issuer: identity.issuer,
+      subject: identity.subject
+    });
+    return this.getPrincipal(identity.tenantId, user.id);
   }
 
   async dashboard(tenantId: TenantId): Promise<DashboardResponse> {

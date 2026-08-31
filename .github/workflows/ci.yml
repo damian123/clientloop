@@ -11,14 +11,36 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: clientloop
+          POSTGRES_PASSWORD: clientloop
+          POSTGRES_USER: clientloop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clientloop -d clientloop"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://clientloop:clientloop@localhost:5432/clientloop?schema=public
+      # Exercise the Prisma integration suite without making unrelated API
+      # tests share mutable database state.
+      CRM_REPOSITORY: memory
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
+      - run: npm exec prisma migrate deploy
+      - run: npm exec prisma db seed
       - run: npm run typecheck
       - run: npm test
       - run: npm exec playwright install --with-deps chromium

@@ -74,7 +74,11 @@ import type {
   UpdateOpportunityInput,
   UpdateTaskInput
 } from "@clientloop/contracts";
-import type { CRMRepository, WebhookDeliveryTarget } from "../repository";
+import type {
+  CRMRepository,
+  OidcPrincipalIdentity,
+  WebhookDeliveryTarget
+} from "../repository";
 
 type PrismaTransaction = Omit<
   PrismaClient,
@@ -109,6 +113,17 @@ type UserWithRoles = Prisma.UserGetPayload<{
   };
 }>;
 
+const OIDC_BINDING_TRANSACTION_ATTEMPTS = 3;
+
+function isRetryableOidcBindingTransactionError(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2034" ||
+      (error.code === "P2010" &&
+        (error.meta?.code === "40001" || error.meta?.code === "40P01")))
+  );
+}
+
 export class PrismaCRMRepository implements CRMRepository {
   constructor(private readonly prisma = new PrismaClient()) {}
 
@@ -121,6 +136,7 @@ export class PrismaCRMRepository implements CRMRepository {
       where: {
         tenantId,
         id: userId,
+        status: "active",
         archivedAt: null
       },
       include: {
@@ -149,6 +165,131 @@ export class PrismaCRMRepository implements CRMRepository {
       user: this.toUser(user),
       roles: user.roles.map((userRole) => this.toRole(userRole.role))
     };
+  }
+
+  async getPrincipalByOidcIdentity(
+    identity: OidcPrincipalIdentity
+  ): Promise<AccessPrincipal> {
+    const binding = await this.prisma.userOidcIdentity.findUnique({
+      where: {
+        tenantId_issuer_subject: {
+          tenantId: identity.tenantId,
+          issuer: identity.issuer,
+          subject: identity.subject
+        }
+      },
+      select: { userId: true }
+    });
+    if (binding) {
+      return this.getPrincipal(identity.tenantId, binding.userId);
+    }
+
+    if (!identity.allowEmailLinking) {
+      throw new Error("OIDC identity is not linked to a user");
+    }
+
+    const userId = await this.bindOidcIdentityByVerifiedEmail(identity);
+    return this.getPrincipal(identity.tenantId, userId);
+  }
+
+  private async bindOidcIdentityByVerifiedEmail(
+    identity: OidcPrincipalIdentity
+  ): Promise<string> {
+    for (let attempt = 0; attempt < OIDC_BINDING_TRANSACTION_ATTEMPTS; attempt += 1) {
+      let selectedUserId: string | undefined;
+
+      try {
+        return await this.prisma.$transaction(
+          async (transaction) => {
+            const binding = await transaction.userOidcIdentity.findUnique({
+              where: {
+                tenantId_issuer_subject: {
+                  tenantId: identity.tenantId,
+                  issuer: identity.issuer,
+                  subject: identity.subject
+                }
+              },
+              select: { userId: true }
+            });
+            if (binding) {
+              return binding.userId;
+            }
+
+            const candidates = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+              SELECT /* oidc_email_link_candidate_lock */ "id"
+              FROM "users"
+              WHERE "tenant_id" = ${identity.tenantId}::uuid
+                AND lower("email") = lower(${identity.email.trim()})
+                AND "status" = 'active'
+                AND "archived_at" IS NULL
+              ORDER BY "id"
+              LIMIT 2
+              FOR UPDATE
+            `);
+            if (candidates.length !== 1) {
+              throw new Error("Authenticated user was not found");
+            }
+            selectedUserId = candidates[0]!.id;
+
+            const existingProviderBinding = await transaction.userOidcIdentity.findUnique({
+              where: {
+                tenantId_userId_issuer: {
+                  tenantId: identity.tenantId,
+                  userId: selectedUserId,
+                  issuer: identity.issuer
+                }
+              },
+              select: { id: true }
+            });
+            if (existingProviderBinding) {
+              throw new Error("OIDC identity is not linked to a user");
+            }
+
+            await transaction.userOidcIdentity.create({
+              data: {
+                tenantId: identity.tenantId,
+                userId: selectedUserId,
+                issuer: identity.issuer,
+                subject: identity.subject
+              }
+            });
+            return selectedUserId;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+        );
+      } catch (error) {
+        if (
+          isRetryableOidcBindingTransactionError(error) &&
+          attempt + 1 < OIDC_BINDING_TRANSACTION_ATTEMPTS
+        ) {
+          continue;
+        }
+
+        if (
+          selectedUserId &&
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          const concurrentBinding = await this.prisma.userOidcIdentity.findUnique({
+            where: {
+              tenantId_issuer_subject: {
+                tenantId: identity.tenantId,
+                issuer: identity.issuer,
+                subject: identity.subject
+              }
+            },
+            select: { userId: true }
+          });
+          if (concurrentBinding?.userId === selectedUserId) {
+            return selectedUserId;
+          }
+        }
+
+        throw error;
+      }
+    }
+
+    throw new Error("OIDC identity binding transaction could not be completed");
   }
 
   async dashboard(tenantId: TenantId): Promise<DashboardResponse> {

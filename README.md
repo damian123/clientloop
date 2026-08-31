@@ -12,7 +12,7 @@ Portfolio project using fictional data. It is not connected to an employer, clie
 
 ## Capabilities
 
-- Shared domain, Zod contracts, and OpenAPI for accounts, contacts, leads, opportunities, and conference workflows
+- Shared domain, Zod contracts, OpenAPI, and a bounded read-only GraphQL detail endpoint
 - Fastify API with object-level permissions, optimistic concurrency, idempotency, audit fields, and a signed webhook outbox
 - Next.js workspace with pipeline, records, tasks, timeline, search, CSV import/export, and role-aware controls
 - Prisma/PostgreSQL schema for tenants, users, CRM records, custom fields, audit logs, and outbox events
@@ -35,7 +35,64 @@ curl -i -X POST http://localhost:4000/v1/session/dev-login \
   -d '{}'
 ```
 
-The API defaults to port 4000 and the web app to port 3000. Mutating cookie-backed requests must send the matching `X-CSRF-Token` header.
+The API defaults to port 4000 and the web app to port 3000. Mutating cookie-backed requests must send the matching `X-CSRF-Token` header. Credentialed browser requests are accepted only from exact origins in the comma-separated `CORS_ALLOWED_ORIGINS` allowlist. Development defaults to `http://localhost:3000` and `http://127.0.0.1:3000`; production defaults to no cross-origin access. Entries must be HTTP(S) origins without paths or wildcards.
+
+### Production OIDC login
+
+The API supports an OpenID Connect authorization-code BFF flow with PKCE,
+`state`, `nonce`, a signed short-lived transaction cookie, verified ID-token
+claims, and an allowlisted local redirect. Configure:
+
+```bash
+OIDC_ISSUER="https://identity.example/"
+OIDC_CLIENT_ID="clientloop"
+OIDC_CLIENT_SECRET="replace-with-provider-secret"
+OIDC_REDIRECT_URI="https://crm.example/v1/session/oidc/callback"
+OIDC_TENANT_ID="00000000-0000-4000-8000-000000000001"
+SESSION_SIGNING_SECRET="replace-with-at-least-32-random-bytes"
+OIDC_TRANSACTION_SECRET="replace-with-a-different-long-random-secret"
+CORS_ALLOWED_ORIGINS="https://crm.example"
+OIDC_ALLOW_EMAIL_LINKING=false
+ALLOW_HEADER_AUTH=false
+ALLOW_DEV_LOGIN=false
+```
+
+Start login at `/v1/session/oidc/login?returnTo=/`. The provider must return a
+verified `iss`, `sub`, and `email`. Login resolves the exact, case-sensitive
+issuer/subject pair in `user_oidc_identities`; it does not routinely authenticate
+by mutable email, provision users, or accept a tenant from provider claims.
+Pre-provision identity bindings from trusted IdP or administrator data before
+enabling login.
+
+For a controlled migration of existing users only,
+`OIDC_ALLOW_EMAIL_LINKING=true` permits an unknown identity to bind once when its
+verified email has exactly one active, unarchived match and that user has no
+binding for the issuer. Disable the switch after migration. Later logins use the
+stored issuer/subject even if email changes, and a new subject cannot replace it.
+
+Use independent random values for session, OIDC transaction, and webhook
+signing. Authentication signing never substitutes `WEBHOOK_SIGNING_SECRET`.
+
+### GraphQL record details
+
+`POST /graphql` is an authenticated, read-only endpoint for dense account,
+contact, lead, and opportunity detail screens. It returns the selected record,
+linked account/contact/opportunities, timeline items, and applicable custom
+field definitions. Query text and selected-field counts are bounded, and
+cookie-authenticated POSTs require the same CSRF header as REST mutations.
+
+```graphql
+query AccountDetail($id: ID!) {
+  recordDetail(entityType: ACCOUNT, id: $id) {
+    account { id name status customFields }
+    contacts { id firstName lastName }
+    opportunities { id name stage amount currency }
+    tasks { id title status }
+    notes { id body }
+    activities { id subject occurredAt }
+  }
+}
+```
 
 ### PostgreSQL path
 
@@ -67,5 +124,6 @@ npm run build
 - Domain events are written to an outbox in the same unit of work; a worker delivers signed webhooks with retry.
 - Conference scoring is a pure domain function with explicit bands; opted-out people cannot enter outreach states.
 - Custom fields, CSV import preview, and Playwright permission cases are first-class rather than afterthoughts.
+- OIDC identities map only to existing active tenant users; GraphQL deliberately has no mutation type.
 
 See [LIMITATIONS.md](LIMITATIONS.md) and [SECURITY.md](SECURITY.md).

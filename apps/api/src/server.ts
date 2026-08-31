@@ -1,25 +1,51 @@
 import cors from "@fastify/cors";
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import { AuthorizationError, CustomFieldValidationError, DomainRuleError } from "@clientloop/domain";
+import { corsAllowedOriginsFromEnv, normalizeCorsAllowedOrigins } from "./cors";
 import { registerCrmRoutes } from "./modules/crm-routes";
+import { registerGraphqlRoute } from "./graphql";
 import { registerSessionRoutes } from "./modules/session-routes";
+import {
+  oidcEmailLinkingAllowedFromEnv,
+  oidcProviderFromEnv,
+  type OidcProvider
+} from "./oidc";
 import { createRepositoryFromEnv } from "./repository-factory";
 import type { CRMRepository } from "./repository";
 import { isValidCsrfRequest, requiresCsrfProtection } from "./session";
 
 export interface BuildServerOptions {
   repository?: CRMRepository;
+  oidcProvider?: OidcProvider | null;
+  corsAllowedOrigins?: readonly string[];
+  allowOidcEmailLinking?: boolean;
+  loggerStream?: { write(message: string): void };
 }
 
 export async function buildServer(options: BuildServerOptions = {}) {
   const app = Fastify({
-    logger: true
+    logger: {
+      serializers: {
+        req: requestForLog
+      },
+      ...(options.loggerStream ? { stream: options.loggerStream } : {})
+    }
   });
   const repository = options.repository ?? createRepositoryFromEnv();
+  const oidcProvider = options.oidcProvider === null
+    ? undefined
+    : options.oidcProvider ?? oidcProviderFromEnv();
+  const corsAllowedOrigins = new Set(
+    normalizeCorsAllowedOrigins(
+      options.corsAllowedOrigins ?? corsAllowedOriginsFromEnv()
+    )
+  );
 
   await app.register(cors, {
-    origin: true,
+    origin(origin, callback) {
+      callback(null, Boolean(origin && corsAllowedOrigins.has(origin)));
+    },
     credentials: true
   });
 
@@ -82,7 +108,13 @@ export async function buildServer(options: BuildServerOptions = {}) {
     }
   });
 
-  await registerSessionRoutes(app, repository);
+  await registerSessionRoutes(
+    app,
+    repository,
+    oidcProvider,
+    options.allowOidcEmailLinking ?? oidcEmailLinkingAllowedFromEnv()
+  );
+  await registerGraphqlRoute(app, repository);
   await registerCrmRoutes(app, repository);
 
   app.addHook("onClose", async () => {
@@ -93,4 +125,18 @@ export async function buildServer(options: BuildServerOptions = {}) {
   });
 
   return app;
+}
+
+function requestForLog(request: FastifyRequest) {
+  const queryStart = request.url.indexOf("?");
+  const url = queryStart === -1
+    ? request.url
+    : `${request.url.slice(0, queryStart)}?[REDACTED]`;
+
+  return {
+    method: request.method,
+    url,
+    host: request.host,
+    remoteAddress: request.ip
+  };
 }
