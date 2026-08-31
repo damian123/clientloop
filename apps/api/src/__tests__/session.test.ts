@@ -132,7 +132,8 @@ describe("CRM API sessions", () => {
     const provider = new FakeOidcProvider();
     const app = await buildServer({
       repository: new InMemoryCRMRepository(),
-      oidcProvider: provider
+      oidcProvider: provider,
+      allowOidcEmailLinking: true
     });
 
     const loginResponse = await app.inject({
@@ -169,6 +170,49 @@ describe("CRM API sessions", () => {
     ).toBe(true);
 
     await app.close();
+  });
+
+  it("rejects an unbound OIDC subject even when its verified email matches", async () => {
+    const app = await buildServer({
+      repository: new InMemoryCRMRepository(),
+      oidcProvider: new FakeOidcProvider()
+    });
+
+    const response = await completeOidcCallback(app);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json().error).toBe("OIDC authentication failed");
+    await app.close();
+  });
+
+  it("keeps OIDC login bound to the exact issuer and subject after migration linking", async () => {
+    const repository = new InMemoryCRMRepository();
+    const provider = new FakeOidcProvider();
+    const linkingApp = await buildServer({
+      repository,
+      oidcProvider: provider,
+      allowOidcEmailLinking: true
+    });
+
+    expect((await completeOidcCallback(linkingApp)).statusCode).toBe(302);
+    provider.identity.subject = "replacement-subject";
+    expect((await completeOidcCallback(linkingApp)).statusCode).toBe(401);
+    provider.identity.subject = "identity-provider-subject";
+    await linkingApp.close();
+
+    const strictApp = await buildServer({ repository, oidcProvider: provider });
+    provider.identity.email = "renamed-user@example.test";
+    expect((await completeOidcCallback(strictApp)).statusCode).toBe(302);
+
+    provider.identity.email = seedUsers.find((user) => user.id === seedUserId)!.email;
+    provider.identity.subject = "different-subject";
+    expect((await completeOidcCallback(strictApp)).statusCode).toBe(401);
+
+    provider.identity.subject = "identity-provider-subject";
+    provider.identity.issuer = "https://different-identity.example";
+    expect((await completeOidcCallback(strictApp)).statusCode).toBe(401);
+
+    await strictApp.close();
   });
 
   it("rejects OIDC callbacks without a valid one-time transaction", async () => {
@@ -221,24 +265,54 @@ describe("CRM API sessions", () => {
     await app.close();
   });
 
-  it("maps only verified OIDC email claims", () => {
+  it("redacts OIDC callback query data from request logs", async () => {
+    const logLines: string[] = [];
+    const app = await buildServer({
+      repository: new InMemoryCRMRepository(),
+      oidcProvider: null,
+      loggerStream: { write: (message) => logLines.push(message) }
+    });
+
+    await app.inject({
+      method: "GET",
+      url: "/v1/session/oidc/callback?code=sensitive-code&state=sensitive-state"
+    });
+    await app.close();
+
+    const logs = logLines.join("\n");
+    expect(logs).toContain("/v1/session/oidc/callback?[REDACTED]");
+    expect(logs).not.toContain("sensitive-code");
+    expect(logs).not.toContain("sensitive-state");
+  });
+
+  it("maps only verified OIDC identity claims", () => {
     expect(
       oidcIdentityFromClaims({
+        iss: "https://identity.example",
         sub: "provider-subject",
         email: "alex.rep@clientloop.test",
         email_verified: true
       })
     ).toEqual({
+      issuer: "https://identity.example",
       subject: "provider-subject",
       email: "alex.rep@clientloop.test"
     });
     expect(() =>
       oidcIdentityFromClaims({
+        iss: "https://identity.example",
         sub: "provider-subject",
         email: "attacker@example.test",
         email_verified: false
       })
     ).toThrow("not verified");
+    expect(() =>
+      oidcIdentityFromClaims({
+        sub: "provider-subject",
+        email: "alex.rep@clientloop.test",
+        email_verified: true
+      })
+    ).toThrow("issuer");
   });
 });
 
@@ -246,6 +320,11 @@ class FakeOidcProvider implements OidcProvider {
   readonly tenantId = seedTenantId;
   callbackUrl: URL | undefined;
   callbackTransaction: OidcTransaction | undefined;
+  identity = {
+    issuer: "https://identity.example",
+    subject: "identity-provider-subject",
+    email: seedUsers.find((user) => user.id === seedUserId)!.email
+  };
 
   async createAuthorizationRequest(returnTo: string) {
     return {
@@ -263,11 +342,24 @@ class FakeOidcProvider implements OidcProvider {
   async exchangeCallback(callbackUrl: URL, transaction: OidcTransaction) {
     this.callbackUrl = callbackUrl;
     this.callbackTransaction = transaction;
-    return {
-      subject: "identity-provider-subject",
-      email: seedUsers.find((user) => user.id === seedUserId)!.email
-    };
+    return { ...this.identity };
   }
+}
+
+async function completeOidcCallback(app: Awaited<ReturnType<typeof buildServer>>) {
+  const loginResponse = await app.inject({
+    method: "GET",
+    url: "/v1/session/oidc/login?returnTo=%2Fpipeline"
+  });
+  expect(loginResponse.statusCode).toBe(302);
+
+  return app.inject({
+    method: "GET",
+    url: "/v1/session/oidc/callback?code=authorization-code&state=fixed-state",
+    headers: {
+      cookie: cookieHeader(loginResponse)
+    }
+  });
 }
 
 function cookieHeader(response: {

@@ -144,6 +144,7 @@ model Tenant {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   users                  User[]
+  oidcIdentities         UserOidcIdentity[]
   roles                  Role[]
   accounts               Account[]
   contacts               Contact[]
@@ -181,10 +182,29 @@ model User {
 
   tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   roles  UserRole[]
+  oidcIdentities UserOidcIdentity[]
 
   @@unique([tenantId, email])
+  @@unique([tenantId, id])
   @@index([tenantId, status])
   @@map("users")
+}
+
+model UserOidcIdentity {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  issuer    String
+  subject   String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [tenantId, userId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, issuer, subject])
+  @@unique([tenantId, userId, issuer])
+  @@index([userId])
+  @@map("user_oidc_identities")
 }
 
 model Role {

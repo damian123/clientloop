@@ -35,7 +35,7 @@ curl -i -X POST http://localhost:4000/v1/session/dev-login \
   -d '{}'
 ```
 
-The API defaults to port 4000 and the web app to port 3000. Mutating cookie-backed requests must send the matching `X-CSRF-Token` header.
+The API defaults to port 4000 and the web app to port 3000. Mutating cookie-backed requests must send the matching `X-CSRF-Token` header. Credentialed browser requests are accepted only from exact origins in the comma-separated `CORS_ALLOWED_ORIGINS` allowlist. Development defaults to `http://localhost:3000` and `http://127.0.0.1:3000`; production defaults to no cross-origin access. Entries must be HTTP(S) origins without paths or wildcards.
 
 ### Production OIDC login
 
@@ -50,13 +50,28 @@ OIDC_CLIENT_SECRET="replace-with-provider-secret"
 OIDC_REDIRECT_URI="https://crm.example/v1/session/oidc/callback"
 OIDC_TENANT_ID="00000000-0000-4000-8000-000000000001"
 SESSION_SIGNING_SECRET="replace-with-at-least-32-random-bytes"
+OIDC_TRANSACTION_SECRET="replace-with-a-different-long-random-secret"
+CORS_ALLOWED_ORIGINS="https://crm.example"
+OIDC_ALLOW_EMAIL_LINKING=false
 ALLOW_HEADER_AUTH=false
 ALLOW_DEV_LOGIN=false
 ```
 
 Start login at `/v1/session/oidc/login?returnTo=/`. The provider must return a
-verified `email` claim matching an active user in the configured tenant. The
-flow never provisions users or accepts a tenant from identity-provider claims.
+verified `iss`, `sub`, and `email`. Login resolves the exact, case-sensitive
+issuer/subject pair in `user_oidc_identities`; it does not routinely authenticate
+by mutable email, provision users, or accept a tenant from provider claims.
+Pre-provision identity bindings from trusted IdP or administrator data before
+enabling login.
+
+For a controlled migration of existing users only,
+`OIDC_ALLOW_EMAIL_LINKING=true` permits an unknown identity to bind once when its
+verified email has exactly one active, unarchived match and that user has no
+binding for the issuer. Disable the switch after migration. Later logins use the
+stored issuer/subject even if email changes, and a new subject cannot replace it.
+
+Use independent random values for session, OIDC transaction, and webhook
+signing. Authentication signing never substitutes `WEBHOOK_SIGNING_SECRET`.
 
 ### GraphQL record details
 

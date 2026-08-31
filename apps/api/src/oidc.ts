@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import * as oidc from "openid-client";
+import { resolveSigningSecret } from "./signing-secret";
 
 const OIDC_TRANSACTION_TTL_SECONDS = 10 * 60;
 const OIDC_TRANSACTION_COOKIE = "clientloop_oidc_transaction";
@@ -14,6 +15,7 @@ export interface OidcTransaction {
 }
 
 export interface OidcIdentity {
+  issuer: string;
   subject: string;
   email: string;
 }
@@ -121,6 +123,9 @@ export function oidcIdentityFromClaims(claims: unknown): OidcIdentity {
     throw new Error("OIDC provider did not return valid ID-token claims");
   }
   const record = claims as Record<string, unknown>;
+  if (typeof record.iss !== "string" || record.iss.length === 0) {
+    throw new Error("OIDC provider did not return a valid issuer");
+  }
   if (typeof record.sub !== "string" || record.sub.length === 0) {
     throw new Error("OIDC provider did not return a valid subject");
   }
@@ -132,6 +137,7 @@ export function oidcIdentityFromClaims(claims: unknown): OidcIdentity {
   }
 
   return {
+    issuer: record.iss,
     subject: record.sub,
     email: record.email
   };
@@ -163,6 +169,10 @@ export function oidcProviderFromEnv(): OidcProvider | undefined {
     redirectUri: new URL(redirectUri),
     tenantId
   });
+}
+
+export function oidcEmailLinkingAllowedFromEnv(): boolean {
+  return process.env.OIDC_ALLOW_EMAIL_LINKING === "true";
 }
 
 export function normalizeReturnTo(value: unknown): string {
@@ -250,16 +260,11 @@ function signTransaction(transaction: OidcTransaction): string {
 }
 
 function sign(value: string): string {
-  const configured =
-    process.env.OIDC_TRANSACTION_SECRET ??
-    process.env.SESSION_SIGNING_SECRET ??
-    process.env.WEBHOOK_SIGNING_SECRET;
-  if ((!configured || configured === "replace-me") && process.env.NODE_ENV === "production") {
-    throw new Error("OIDC_TRANSACTION_SECRET or SESSION_SIGNING_SECRET is required in production");
-  }
-  const secret = configured && configured !== "replace-me"
-    ? configured
-    : "clientloop-local-oidc-transaction-secret";
+  const secret = resolveSigningSecret({
+    environmentVariable: "OIDC_TRANSACTION_SECRET",
+    configured: process.env.OIDC_TRANSACTION_SECRET,
+    localFallback: "clientloop-local-oidc-transaction-secret"
+  });
   return createHmac("sha256", secret).update(value).digest("base64url");
 }
 

@@ -23,7 +23,8 @@ import {
 export async function registerSessionRoutes(
   app: FastifyInstance,
   repository: CRMRepository,
-  oidcProvider?: OidcProvider
+  oidcProvider?: OidcProvider,
+  allowOidcEmailLinking = false
 ) {
   app.get("/v1/session", async (request) => {
     const principal = await principalFromRequest(request, repository);
@@ -109,10 +110,13 @@ export async function registerSessionRoutes(
         callbackUrlFromRequest(request),
         transaction
       );
-      const principal = await repository.getPrincipalByEmail(
-        oidcProvider.tenantId,
-        identity.email
-      );
+      const principal = await repository.getPrincipalByOidcIdentity({
+        tenantId: oidcProvider.tenantId,
+        issuer: identity.issuer,
+        subject: identity.subject,
+        email: identity.email,
+        allowEmailLinking: allowOidcEmailLinking
+      });
       const sessionToken = createSessionToken({
         tenantId: principal.tenantId,
         userId: principal.user.id
