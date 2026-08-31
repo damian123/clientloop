@@ -58,6 +58,7 @@ export interface WebhookDeliveryTarget extends WebhookSubscription {
 
 export interface CRMRepository {
   getPrincipal(tenantId: TenantId, userId: string): Promise<AccessPrincipal>;
+  getPrincipalByEmail(tenantId: TenantId, email: string): Promise<AccessPrincipal>;
   dashboard(tenantId: TenantId): Promise<DashboardResponse>;
   listAccounts(tenantId: TenantId, query: ListQuery): Promise<Page<Account>>;
   createAccount(principal: AccessPrincipal, input: CreateAccountInput): Promise<Account>;

@@ -194,7 +194,11 @@ function parseCookies(header: string | undefined): Record<string, string> {
       return cookies;
     }
 
-    cookies[rawName] = decodeURIComponent(rawValue.join("="));
+    try {
+      cookies[rawName] = decodeURIComponent(rawValue.join("="));
+    } catch {
+      // Ignore malformed client input so authentication fails closed.
+    }
     return cookies;
   }, {});
 }

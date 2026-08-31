@@ -121,6 +121,46 @@ export class PrismaCRMRepository implements CRMRepository {
       where: {
         tenantId,
         id: userId,
+        status: "active",
+        archivedAt: null
+      },
+      include: {
+        roles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      throw new Error("Authenticated user was not found");
+    }
+
+    return {
+      tenantId,
+      user: this.toUser(user),
+      roles: user.roles.map((userRole) => this.toRole(userRole.role))
+    };
+  }
+
+  async getPrincipalByEmail(tenantId: TenantId, email: string): Promise<AccessPrincipal> {
+    const user = await this.prisma.user.findFirst({
+      where: {
+        tenantId,
+        email: {
+          equals: email.trim(),
+          mode: "insensitive"
+        },
+        status: "active",
         archivedAt: null
       },
       include: {

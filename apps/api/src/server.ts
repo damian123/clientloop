@@ -3,13 +3,16 @@ import Fastify from "fastify";
 import { ZodError } from "zod";
 import { AuthorizationError, CustomFieldValidationError, DomainRuleError } from "@clientloop/domain";
 import { registerCrmRoutes } from "./modules/crm-routes";
+import { registerGraphqlRoute } from "./graphql";
 import { registerSessionRoutes } from "./modules/session-routes";
+import { oidcProviderFromEnv, type OidcProvider } from "./oidc";
 import { createRepositoryFromEnv } from "./repository-factory";
 import type { CRMRepository } from "./repository";
 import { isValidCsrfRequest, requiresCsrfProtection } from "./session";
 
 export interface BuildServerOptions {
   repository?: CRMRepository;
+  oidcProvider?: OidcProvider | null;
 }
 
 export async function buildServer(options: BuildServerOptions = {}) {
@@ -17,6 +20,9 @@ export async function buildServer(options: BuildServerOptions = {}) {
     logger: true
   });
   const repository = options.repository ?? createRepositoryFromEnv();
+  const oidcProvider = options.oidcProvider === null
+    ? undefined
+    : options.oidcProvider ?? oidcProviderFromEnv();
 
   await app.register(cors, {
     origin: true,
@@ -82,7 +88,8 @@ export async function buildServer(options: BuildServerOptions = {}) {
     }
   });
 
-  await registerSessionRoutes(app, repository);
+  await registerSessionRoutes(app, repository, oidcProvider);
+  await registerGraphqlRoute(app, repository);
   await registerCrmRoutes(app, repository);
 
   app.addHook("onClose", async () => {
