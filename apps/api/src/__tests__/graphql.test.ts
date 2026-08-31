@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   seedAccounts,
   seedContacts,
@@ -79,6 +79,164 @@ describe("CRM GraphQL read layer", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json().error).toContain("too many fields");
+    await app.close();
+  });
+
+  it("rejects repeated aliased record-detail roots before loading the dashboard", async () => {
+    const repository = new InMemoryCRMRepository();
+    const dashboard = vi.spyOn(repository, "dashboard");
+    const app = await buildServer({ repository });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/graphql",
+      payload: {
+        query: `{
+          first: recordDetail(entityType: ACCOUNT, id: "${seedAccounts[0]!.id}") { entityType }
+          second: recordDetail(entityType: ACCOUNT, id: "${seedAccounts[0]!.id}") { entityType }
+        }`
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("recordDetail only once");
+    expect(dashboard).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("charges repeated fragment spreads against expanded field complexity", async () => {
+    const repository = new InMemoryCRMRepository();
+    const dashboard = vi.spyOn(repository, "dashboard");
+    const app = await buildServer({ repository });
+    const spreads = Array.from({ length: 100 }, () => "...Summary").join("\n");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/graphql",
+      payload: {
+        query: `
+          query {
+            recordDetail(entityType: ACCOUNT, id: "${seedAccounts[0]!.id}") {
+              ${spreads}
+            }
+          }
+          fragment Summary on RecordDetail { entityType }
+        `
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("too many fields");
+    expect(dashboard).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects cyclic fragment graphs without recursing or loading the dashboard", async () => {
+    const repository = new InMemoryCRMRepository();
+    const dashboard = vi.spyOn(repository, "dashboard");
+    const app = await buildServer({ repository });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/graphql",
+      payload: {
+        query: `
+          query {
+            recordDetail(entityType: ACCOUNT, id: "${seedAccounts[0]!.id}") { ...First }
+          }
+          fragment First on RecordDetail { ...Second }
+          fragment Second on RecordDetail { ...First }
+        `
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("fragment cycle");
+    expect(dashboard).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("rejects selections deeper than the record-detail schema requires", async () => {
+    const repository = new InMemoryCRMRepository();
+    const dashboard = vi.spyOn(repository, "dashboard");
+    const app = await buildServer({ repository });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/graphql",
+      payload: {
+        query: `{ __schema { queryType { fields { type { name } } } } }`
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error).toContain("too deeply nested");
+    expect(dashboard).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("allows a legitimate fragment-based detail query with one dashboard load", async () => {
+    const repository = new InMemoryCRMRepository();
+    const dashboard = vi.spyOn(repository, "dashboard");
+    const app = await buildServer({ repository });
+    const account = seedAccounts[0]!;
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/graphql",
+      payload: {
+        query: `
+          query AccountDetail($id: ID!) {
+            detail: recordDetail(entityType: ACCOUNT, id: $id) {
+              entityType
+              account { ...AccountSummary }
+              ...TimelineSummary
+            }
+          }
+          fragment AccountSummary on Account { id name status }
+          fragment TimelineSummary on RecordDetail {
+            tasks { id title parent { type id } }
+            notes { id body }
+            activities { id subject occurredAt }
+          }
+        `,
+        variables: { id: account.id }
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().errors).toBeUndefined();
+    expect(response.json().data.detail.account.name).toBe(account.name);
+    expect(dashboard).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
+
+  it("keeps resolver diagnostics server-side", async () => {
+    const sensitiveDiagnostic = "postgresql://private-db.example/internal-diagnostic";
+    const repository = new InMemoryCRMRepository();
+    vi.spyOn(repository, "dashboard").mockRejectedValue(new Error(sensitiveDiagnostic));
+    const logLines: string[] = [];
+    const app = await buildServer({
+      repository,
+      oidcProvider: null,
+      loggerStream: { write: (message) => logLines.push(message) }
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/graphql",
+      payload: {
+        query: `{ recordDetail(entityType: ACCOUNT, id: "${seedAccounts[0]!.id}") { entityType } }`
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().errors[0]).toMatchObject({
+      message: "Internal server error",
+      extensions: { code: "INTERNAL_SERVER_ERROR" }
+    });
+    expect(response.body).not.toContain(sensitiveDiagnostic);
+    expect(logLines.join("\n")).toContain(sensitiveDiagnostic);
     await app.close();
   });
 

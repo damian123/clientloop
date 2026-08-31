@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   GraphQLEnumType,
   GraphQLBoolean,
+  GraphQLError,
   GraphQLFloat,
   GraphQLID,
   GraphQLInt,
@@ -14,7 +15,11 @@ import {
   Kind,
   graphql,
   parse,
-  visit,
+  type DocumentNode,
+  type FragmentDefinitionNode,
+  type OperationDefinitionNode,
+  type SelectionNode,
+  type SelectionSetNode,
   type ValueNode
 } from "graphql";
 import type { AccessPrincipal, EntityRef, RecordEntityType } from "@clientloop/domain";
@@ -22,7 +27,10 @@ import { principalFromRequest } from "./auth";
 import type { CRMRepository } from "./repository";
 
 const MAX_GRAPHQL_QUERY_LENGTH = 20_000;
-const MAX_GRAPHQL_FIELDS = 100;
+const MAX_GRAPHQL_EXPANDED_FIELDS = 100;
+// The deepest valid record-detail path is recordDetail -> timeline item -> parent -> scalar.
+const MAX_GRAPHQL_DEPTH = 4;
+const MAX_RECORD_DETAIL_ROOT_FIELDS = 1;
 
 interface GraphqlContext {
   repository: CRMRepository;
@@ -236,14 +244,12 @@ export async function registerGraphqlRoute(app: FastifyInstance, repository: CRM
 
     try {
       const document = parse(body.query);
-      let fieldCount = 0;
-      visit(document, {
-        Field: () => {
-          fieldCount += 1;
-        }
-      });
-      if (fieldCount > MAX_GRAPHQL_FIELDS) {
-        return reply.code(400).send({ error: "GraphQL query selects too many fields" });
+      const limitError = graphqlQueryLimitError(
+        document,
+        typeof body.operationName === "string" ? body.operationName : undefined
+      );
+      if (limitError) {
+        return reply.code(400).send({ error: limitError });
       }
     } catch (error) {
       return reply.code(400).send({
@@ -252,7 +258,7 @@ export async function registerGraphqlRoute(app: FastifyInstance, repository: CRM
     }
 
     const principal = await principalFromRequest(request, repository);
-    return graphql({
+    const result = await graphql({
       schema: clientloopGraphqlSchema,
       source: body.query,
       variableValues:
@@ -262,7 +268,126 @@ export async function registerGraphqlRoute(app: FastifyInstance, repository: CRM
       operationName: typeof body.operationName === "string" ? body.operationName : undefined,
       contextValue: { repository, principal } satisfies GraphqlContext
     });
+
+    if (!result.errors) {
+      return result;
+    }
+
+    return {
+      ...result,
+      errors: result.errors.map((error) => {
+        // Validation errors have no response path and are safe, useful feedback
+        // about the caller's own document. Resolver errors can contain database,
+        // infrastructure, or secret-bearing diagnostics and must stay server-side.
+        if (!error.path) {
+          return error;
+        }
+
+        request.log.error(
+          {
+            err: error.originalError ?? error,
+            graphqlPath: error.path
+          },
+          "GraphQL resolver failed"
+        );
+        return new GraphQLError("Internal server error", {
+          nodes: error.nodes,
+          path: error.path,
+          extensions: { code: "INTERNAL_SERVER_ERROR" }
+        });
+      })
+    };
   });
+}
+
+function graphqlQueryLimitError(
+  document: DocumentNode,
+  operationName: string | undefined
+): string | undefined {
+  const fragments = new Map<string, FragmentDefinitionNode>();
+  const operations: OperationDefinitionNode[] = [];
+
+  for (const definition of document.definitions) {
+    if (definition.kind === Kind.FRAGMENT_DEFINITION) {
+      fragments.set(definition.name.value, definition);
+    } else if (definition.kind === Kind.OPERATION_DEFINITION) {
+      operations.push(definition);
+    }
+  }
+
+  const selectedOperations = operationName
+    ? operations.filter((operation) => operation.name?.value === operationName)
+    : operations.length === 1
+      ? operations
+      : [];
+
+  for (const operation of selectedOperations) {
+    let expandedFieldCount = 0;
+    let recordDetailRootFieldCount = 0;
+    const pendingSelections: Array<{
+      selection: SelectionNode;
+      fieldDepth: number;
+      activeFragments: ReadonlySet<string>;
+    }> = [];
+    const pushSelectionSet = (
+      selectionSet: SelectionSetNode,
+      fieldDepth: number,
+      activeFragments: ReadonlySet<string>
+    ) => {
+      for (let index = selectionSet.selections.length - 1; index >= 0; index -= 1) {
+        pendingSelections.push({
+          selection: selectionSet.selections[index]!,
+          fieldDepth,
+          activeFragments
+        });
+      }
+    };
+
+    pushSelectionSet(operation.selectionSet, 1, new Set());
+    while (pendingSelections.length > 0) {
+      const { selection, fieldDepth, activeFragments } = pendingSelections.pop()!;
+      if (selection.kind === Kind.FIELD) {
+        expandedFieldCount += 1;
+        if (expandedFieldCount > MAX_GRAPHQL_EXPANDED_FIELDS) {
+          return "GraphQL query selects too many fields";
+        }
+        if (fieldDepth > MAX_GRAPHQL_DEPTH) {
+          return "GraphQL query is too deeply nested";
+        }
+        if (fieldDepth === 1 && selection.name.value === "recordDetail") {
+          recordDetailRootFieldCount += 1;
+          if (recordDetailRootFieldCount > MAX_RECORD_DETAIL_ROOT_FIELDS) {
+            return "GraphQL operation may select recordDetail only once";
+          }
+        }
+        if (selection.selectionSet) {
+          pushSelectionSet(selection.selectionSet, fieldDepth + 1, activeFragments);
+        }
+        continue;
+      }
+
+      if (selection.kind === Kind.INLINE_FRAGMENT) {
+        pushSelectionSet(selection.selectionSet, fieldDepth, activeFragments);
+        continue;
+      }
+
+      const fragmentName = selection.name.value;
+      if (activeFragments.has(fragmentName)) {
+        return "GraphQL query contains a fragment cycle";
+      }
+
+      const fragment = fragments.get(fragmentName);
+      if (!fragment) {
+        continue;
+      }
+
+      const fragmentPath = new Set(activeFragments);
+      fragmentPath.add(fragmentName);
+      pushSelectionSet(fragment.selectionSet, fieldDepth, fragmentPath);
+    }
+  }
+
+  return undefined;
 }
 
 async function buildRecordDetail(
